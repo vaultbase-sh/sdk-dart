@@ -122,7 +122,7 @@ void main() {
 
   group('session', () {
     test('a 401 refreshes once and retries with the new token', () async {
-      final fresh = jwtExpiringIn(3600);
+      final fresh = jwtExpiringIn(7200);
       final store = signedIn(jwtExpiringIn(3600));
       var calls = 0;
       final c = client((req) {
@@ -188,7 +188,7 @@ void main() {
     test(
         'a token close to expiry is refreshed first, once for concurrent requests',
         () async {
-      final fresh = jwtExpiringIn(3600);
+      final fresh = jwtExpiringIn(7200);
       final store = signedIn(jwtExpiringIn(30));
       final c = client((req) async {
         if (req.url.path == '/api/v1/auth/refresh') {
@@ -224,7 +224,7 @@ void main() {
 
     test('auth.refresh stores the new token; logout clears even when offline',
         () async {
-      final fresh = jwtExpiringIn(3600);
+      final fresh = jwtExpiringIn(7200);
       final store = signedIn(jwtExpiringIn(3600));
       final c = client((req) {
         if (req.url.path == '/api/v1/auth/refresh') {
