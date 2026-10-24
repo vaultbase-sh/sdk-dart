@@ -15,3 +15,18 @@
 - `CancelToken`, request keys and `autoCancel` to cancel requests.
 - Typed errors: a sealed `VaultbaseException` with one subclass per kind;
   the server's error `code` is kept.
+- Sign-in: `auth.collection(name)` with register, login, two-factor
+  (`loginMfa`, TOTP setup / confirm / disable, recovery codes), one-time
+  codes, anonymous sign-in and promote, email verification, password reset,
+  email change, invitations, and OAuth (`oauth2Authorize`,
+  `oauth2Exchange`, `oauth2ExchangeRedirect`, merge confirm, unlink).
+  Results are a sealed `AuthResult`: `SignedIn`, `MfaRequired`,
+  `MergeRequired`. `auth.admin` for admin setup, sign-in, invites and
+  impersonation.
+- Files: `files.upload` with `UploadFile.fromBytes` / `fromStream` and
+  upload progress, `files.url` with thumbnails and formats, access tokens
+  for protected files (`token`, `urlWithToken`), `files.delete`.
+- Realtime over one WebSocket: `collection(name).subscribe` / `events()`,
+  per-record subscriptions, `ready` once the server confirms, reconnect
+  with backoff, the new token sent after each refresh, `pause` / `resume`,
+  and a `states` stream.

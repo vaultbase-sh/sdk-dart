@@ -10,10 +10,12 @@ import 'etag_cache.dart';
 import 'filter.dart';
 import 'jwt.dart';
 import 'models.dart';
+import 'realtime.dart';
 import 'services/auth.dart';
 import 'services/batch.dart';
 import 'services/collection.dart';
 import 'services/custom.dart';
+import 'services/files.dart';
 import 'services/singleton.dart';
 
 /// Refresh the session this many seconds before its token expires.
@@ -72,6 +74,12 @@ class Vaultbase {
 
   /// Sign-in, refresh, sign-out.
   late final AuthService auth = AuthService(this);
+
+  /// Record changes pushed over a WebSocket.
+  late final Realtime realtime = Realtime(this);
+
+  /// Upload, file URLs and access tokens.
+  late final Files files = Files(this);
 
   /// Custom routes under `/api/v1/custom/`.
   late final CustomRoutes custom = CustomRoutes(this);
@@ -141,6 +149,7 @@ class Vaultbase {
 
   /// Closes the HTTP client, if this client created it.
   void close() {
+    realtime.close();
     _cancels.cancelAll();
     if (_ownsHttp) _http.close();
   }
@@ -160,6 +169,7 @@ class Vaultbase {
     bool skipRefresh = false,
     bool retried = false,
     MultipartBuilder? multipart,
+    void Function(int sent, int total)? onProgress,
     void Function(http.Response)? onResponse,
   }) async {
     final uri = buildUrl(path, query);
@@ -205,10 +215,24 @@ class Vaultbase {
     final http.BaseRequest req;
     if (multipart != null) {
       final parts = multipart();
-      req = http.AbortableMultipartRequest(method, uri,
-          abortTrigger: abort?.future)
+      final form = http.MultipartRequest(method, uri)
         ..fields.addAll(parts.fields)
         ..files.addAll(parts.files);
+      final bytes = form.finalize();
+      final total = form.contentLength;
+      final streamed = http.AbortableStreamedRequest(method, uri,
+          abortTrigger: abort?.future)
+        ..contentLength = total;
+      hdrs.addAll(form.headers);
+      var sent = 0;
+      // addStream follows the client's reads, so progress tracks the upload.
+      streamed.sink.addStream(bytes.map((chunk) {
+        sent += chunk.length;
+        onProgress?.call(sent, total);
+        return chunk;
+      })).then((_) => streamed.sink.close(),
+          onError: (Object e) => streamed.sink.close());
+      req = streamed;
     } else {
       final r = http.AbortableRequest(method, uri, abortTrigger: abort?.future);
       if (body != null) {
@@ -280,6 +304,7 @@ class Vaultbase {
                 autoCancel: autoCancel,
                 retried: true,
                 multipart: multipart,
+                onProgress: onProgress,
                 onResponse: onResponse);
           }
         }

@@ -1,6 +1,7 @@
 import '../cancel.dart';
 import '../client.dart';
 import '../models.dart';
+import '../realtime.dart';
 
 /// Records of one collection.
 class Collection<T> {
@@ -156,6 +157,16 @@ class Collection<T> {
       for (final row in data as List) (row as Map).cast<String, dynamic>()
     ];
   }
+
+  /// Calls [onEvent] for changes to this collection's records, or only to
+  /// the records in [ids]. See [Realtime.subscribe].
+  RealtimeSubscription subscribe(void Function(RealtimeEvent) onEvent,
+          {List<String>? ids}) =>
+      _vb.realtime.subscribe(name, onEvent, ids: ids);
+
+  /// [subscribe] as a stream.
+  Stream<RealtimeEvent> events({List<String>? ids}) =>
+      _vb.realtime.events(name, ids: ids);
 
   Map<String, String>? _ifMatch(String id, String? explicit, bool check) {
     if (!check) return null;
