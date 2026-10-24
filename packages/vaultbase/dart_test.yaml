@@ -1,0 +1,4 @@
+tags:
+  integration:
+    # Starts a real server from ../vaultbase (or VAULTBASE_SERVER_DIR).
+    timeout: 2x

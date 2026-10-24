@@ -1,0 +1,8 @@
+.dart_tool/
+build/
+pubspec_overrides.yaml
+*.iml
+.idea/
+.DS_Store
+coverage/
+.claude-flow/

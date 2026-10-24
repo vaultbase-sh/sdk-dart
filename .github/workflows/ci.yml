@@ -1,0 +1,77 @@
+name: CI
+
+# Analyze and test both packages on every push and pull request. The server
+# repo is checked out next to this one so the integration tests
+# (packages/vaultbase/test/integration/) run against a real Vaultbase instead
+# of skipping; a weekly run catches server changes that break the SDK.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "37 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk:
+    name: SDK (format, analyze, tests against the server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: sdk-dart
+
+      # test/integration/server.dart starts the server from ../vaultbase.
+      - uses: actions/checkout@v4
+        with:
+          repository: vaultbase-sh/vaultbase
+          ref: main
+          path: vaultbase
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Same pinned runtime as the server's CI and releases.
+          bun-version: 1.4.2
+
+      - name: Install server dependencies
+        working-directory: vaultbase
+        run: bun install --frozen-lockfile
+
+      # The workspace includes the Flutter package, so resolve it with Flutter.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get packages
+        working-directory: sdk-dart
+        run: flutter pub get
+
+      - name: Format
+        working-directory: sdk-dart
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        working-directory: sdk-dart
+        run: flutter analyze
+
+      - name: Test (vaultbase)
+        # Integration tests skip when the server can't be found; fail instead.
+        working-directory: sdk-dart/packages/vaultbase
+        run: |
+          set -o pipefail
+          dart test --reporter expanded 2>&1 | tee test.log
+          if grep -Eq '\(skipped\)|Skip:' test.log; then echo "::error::tests were skipped"; exit 1; fi
+
+      - name: Test (vaultbase_flutter)
+        working-directory: sdk-dart/packages/vaultbase_flutter
+        run: flutter test

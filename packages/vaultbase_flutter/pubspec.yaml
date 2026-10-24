@@ -1,0 +1,21 @@
+name: vaultbase_flutter
+description: Flutter helpers for the Vaultbase client. Secure token storage, OAuth sign-in and app lifecycle.
+version: 0.1.0-dev
+homepage: https://vaultbase.dev
+repository: https://github.com/vaultbase-sh/sdk-dart/tree/main/packages/vaultbase_flutter
+documentation: https://docs.vaultbase.dev
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  vaultbase: ^0.1.0-dev
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^6.0.0
