@@ -10,6 +10,7 @@ import 'etag_cache.dart';
 import 'filter.dart';
 import 'jwt.dart';
 import 'models.dart';
+import 'flags.dart';
 import 'realtime.dart';
 import 'services/auth.dart';
 import 'services/batch.dart';
@@ -81,6 +82,9 @@ class Vaultbase {
   /// Upload, file URLs and access tokens.
   late final Files files = Files(this);
 
+  /// Feature flags evaluated by the server; [Flags.connect] to load them.
+  late final Flags flags = Flags(this);
+
   /// Custom routes under `/api/v1/custom/`.
   late final CustomRoutes custom = CustomRoutes(this);
 
@@ -149,6 +153,7 @@ class Vaultbase {
 
   /// Closes the HTTP client, if this client created it.
   void close() {
+    flags.disconnect();
     realtime.close();
     _cancels.cancelAll();
     if (_ownsHttp) _http.close();

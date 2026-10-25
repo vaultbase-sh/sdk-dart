@@ -34,3 +34,10 @@
   session once, writes changes in order. Requests and the realtime
   connection wait for `authStore.ready`, so the first request after start
   carries the saved token.
+- Feature flags: `vb.flags.connect(context: ...)` loads every flag the
+  server evaluates for the context; `isEnabled`, `getString`, `getNumber`,
+  `getJson` read them synchronously; `changes` names the keys that
+  changed. Changes are pushed over the realtime connection record
+  subscriptions use, with a periodic refetch as a fallback, and the flags
+  are fetched again after sign-in, sign-out and a reconnect.
+- `realtime.subscribeTopic` for server topics that aren't collections.

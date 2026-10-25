@@ -54,13 +54,15 @@ class RealtimeSubscription {
 }
 
 class _Sub {
-  _Sub(this.collection, this.ids, this.onEvent);
+  _Sub(this.collection, this.ids, this.onEvent, {this.onMessage});
 
+  /// The collection, or for a server topic ([onMessage] set) the topic.
   final String collection;
 
   /// Null for every record of the collection.
   final List<String>? ids;
   final void Function(RealtimeEvent) onEvent;
+  final void Function(Map<String, dynamic>)? onMessage;
   final ready = Completer<void>();
 
   List<String> get topics =>
@@ -106,10 +108,19 @@ class Realtime {
   /// Calls [onEvent] for changes to records of [collection] (`'*'` for every
   /// collection), or only to the records in [ids].
   RealtimeSubscription subscribe(
-      String collection, void Function(RealtimeEvent) onEvent,
-      {List<String>? ids}) {
-    final sub =
-        _Sub(collection, ids == null ? null : List.unmodifiable(ids), onEvent);
+          String collection, void Function(RealtimeEvent) onEvent,
+          {List<String>? ids}) =>
+      _add(_Sub(
+          collection, ids == null ? null : List.unmodifiable(ids), onEvent));
+
+  /// Subscribes to a server topic that isn't a collection (`__flags`), and
+  /// calls [onMessage] with each message that isn't a record event. Those
+  /// messages don't name their topic, so a listener checks their `type`.
+  RealtimeSubscription subscribeTopic(
+          String topic, void Function(Map<String, dynamic>) onMessage) =>
+      _add(_Sub(topic, null, (_) {}, onMessage: onMessage));
+
+  RealtimeSubscription _add(_Sub sub) {
     _subs.add(sub);
     final added = <String>[];
     for (final t in sub.topics) {
@@ -305,6 +316,13 @@ class Realtime {
         }
       case 'create' || 'update' || 'delete':
         _deliver(m);
+      case 'connected' || 'unsubscribed' || 'subs' || 'pong' || 'error':
+        break;
+      default:
+        final message = m.cast<String, dynamic>();
+        for (final s in List.of(_subs)) {
+          s.onMessage?.call(message);
+        }
     }
   }
 
@@ -322,6 +340,7 @@ class Realtime {
     final event = RealtimeEvent(action, collection, id,
         action == RealtimeAction.delete ? null : record);
     for (final s in List.of(_subs)) {
+      if (s.onMessage != null) continue;
       if (s.collection != '*' && s.collection != collection) continue;
       if (s.ids != null && !s.ids!.contains(id)) continue;
       s.onEvent(event);

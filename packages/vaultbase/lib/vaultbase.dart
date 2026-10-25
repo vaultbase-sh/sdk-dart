@@ -7,6 +7,7 @@ export 'src/cancel.dart' show CancelToken;
 export 'src/client.dart' show Vaultbase;
 export 'src/errors.dart';
 export 'src/filter.dart' show Field, buildFilter;
+export 'src/flags.dart' show Flags;
 export 'src/jwt.dart' show decodeJwtPayload;
 export 'src/models.dart';
 export 'src/realtime.dart'
