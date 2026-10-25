@@ -185,10 +185,11 @@ void main() {
 
       await admin.files
           .delete('docs', doc.id, 'attachments', metas.last.filename);
-      // The stored file is gone; the record's field still names it (the
-      // server doesn't update the record).
+      // The stored file is gone and the record's field no longer names it.
       final gone = await http.get(admin.files.url(metas.last.filename));
       expect(gone.statusCode, 404);
+      final after = await admin.collection('docs').get(doc.id);
+      expect(after.getList<String>('attachments'), [metas.first.filename]);
     }, skip: skip);
 
     test('a protected file needs a token', () async {
