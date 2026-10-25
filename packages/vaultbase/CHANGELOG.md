@@ -41,9 +41,10 @@
   subscriptions use, with a periodic refetch as a fallback, and the flags
   are fetched again after sign-in, sign-out and a reconnect.
 - `realtime.subscribeTopic` for server topics that aren't collections.
-- Typed records from `vb-types --lang dart` (JS SDK 0.8): an
-  `XRecord extends RecordModel` per collection with a getter per field, an
-  `XCreate` with `toJson()`, and `vb.collections.<name>` returning
+- Typed records: `dart run vaultbase:types --schema=vaultbase-schema.json`
+  (or `--url` with `--admin-token`) writes `lib/vaultbase_schema.g.dart`:
+  an `XRecord extends RecordModel` per collection with a getter per field,
+  an `XCreate` with `toJson()`, and `vb.collections.<name>` returning
   `Collection<XRecord>` / `Singleton<XRecord>`.
 - Realtime: closing the client while a connection is opening leaves no
   pending timer (widget tests failed on it), and a connection attempt that

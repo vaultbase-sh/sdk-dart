@@ -7,8 +7,8 @@ import 'package:vaultbase/vaultbase.dart';
 import '../generated/schema.g.dart';
 import 'server.dart';
 
-// test/generated/schema.g.dart comes from `vb-types --lang dart` over the
-// JS SDK's tests/fixtures/schema-all-types.json; these collections match it.
+// test/generated/schema.g.dart is `dart run vaultbase:types` over
+// test/fixtures/schema-all-types.json; these collections match it.
 
 void main() {
   final skip =
