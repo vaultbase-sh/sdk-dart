@@ -145,6 +145,31 @@ void main() {
       vb.close();
     }, skip: skip);
 
+    test('native sign-in: a nonce is issued; a forged token is refused',
+        () async {
+      await admin.send('/api/v1/admin/settings', method: 'PATCH', body: {
+        'oauth2.google.enabled': '1',
+        'oauth2.google.native_client_ids':
+            'sdk-dart.apps.googleusercontent.com',
+      });
+      final members = Vaultbase(server.baseUrl).auth.collection('members');
+      final nonce = await members.idTokenNonce('google');
+      expect(nonce, isNotEmpty);
+      await expectLater(
+          members.signInWithIdToken('google', 'not.a.jwt', nonce: nonce),
+          throwsA(isA<AuthException>()));
+      // The nonce was spent by that attempt.
+      await expectLater(
+          members.signInWithIdToken('google', 'not.a.jwt', nonce: nonce),
+          throwsA(
+              isA<ServerException>().having((e) => e.status, 'status', 400)));
+      // Google's nonce is optional; the token is still checked.
+      await expectLater(members.signInWithIdToken('google', 'not.a.jwt'),
+          throwsA(isA<AuthException>()));
+      await expectLater(
+          members.idTokenNonce('github'), throwsA(isA<ValidationException>()));
+    }, skip: skip);
+
     test('OAuth: providers list, and an unlisted redirect is refused',
         () async {
       final members = Vaultbase(server.baseUrl).auth.collection('members');

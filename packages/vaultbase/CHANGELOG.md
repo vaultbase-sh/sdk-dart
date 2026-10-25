@@ -1,3 +1,9 @@
+## Unreleased
+
+- Native Apple and Google sign-in: `auth.collection(name).signInWithIdToken`
+  with the ID token from the platform's sign-in sheet, and `idTokenNonce` for
+  the single-use nonce (required for Apple). Needs server 0.28.
+
 ## 0.1.0
 
 - The client: `Vaultbase(baseUrl)` with an `AuthStore` (memory by default),

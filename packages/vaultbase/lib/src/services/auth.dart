@@ -344,6 +344,35 @@ class CollectionAuth {
           },
           skipAuth: false));
 
+  /// A single-use nonce for [signInWithIdToken] with [provider] (`apple`
+  /// or `google`), valid for 10 minutes. Give it to the platform's sign-in
+  /// sheet as it is; the server also accepts its SHA-256 in hex. Required
+  /// for Apple; optional for Google.
+  Future<String> idTokenNonce(String provider) async =>
+      (await _post('oauth2/id-token/nonce',
+          body: {'provider': provider}))['nonce'] as String;
+
+  /// Signs in with an ID token from the platform's own sign-in sheet (Sign
+  /// in with Apple, Google sign-in): [SignedIn], [MfaRequired] or
+  /// [MergeRequired], as for OAuth in the browser. Each token works once.
+  ///
+  /// [nonce] is the one from [idTokenNonce] that the token carries.
+  /// Required for Apple. Google's Flutter plugin fixes its nonce when it is
+  /// initialized, once per launch, so leave it out for Google unless the
+  /// token carries one from [idTokenNonce].
+  ///
+  /// Apple gives the app the user's [name] only on the first sign-in, and
+  /// never in the token; pass it on so a new account gets it. Needs server
+  /// 0.28 or later.
+  Future<AuthResult> signInWithIdToken(String provider, String idToken,
+          {String? nonce, String? name}) async =>
+      _store(await _post('oauth2/id-token', body: {
+        'provider': provider,
+        'id_token': idToken,
+        if (nonce != null) 'nonce': nonce,
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+      }));
+
   Future<void> oauth2Unlink(String provider) async {
     await _vb.request(_path('oauth2/${Uri.encodeComponent(provider)}/unlink'),
         method: 'DELETE');

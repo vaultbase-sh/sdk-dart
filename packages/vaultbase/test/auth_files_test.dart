@@ -153,6 +153,57 @@ void main() {
       expect(c.vb.authStore.token, adminToken);
     });
 
+    test('native sign-in: a nonce, then the ID token with it', () async {
+      final token = jwtExpiringIn(3600);
+      final c = client((req) => req.url.path.endsWith('/nonce')
+          ? json({
+              'data': {'nonce': 'n1', 'expires_at': 1}
+            })
+          : json({
+              'data': {
+                'token': token,
+                'record': {'id': 'u1'}
+              }
+            }));
+      final users = c.vb.auth.collection('users');
+      final nonce = await users.idTokenNonce('apple');
+      expect(nonce, 'n1');
+      expect(c.requests.first.url.path,
+          '/api/v1/auth/users/oauth2/id-token/nonce');
+      expect(jsonDecode(c.requests.first.body), {'provider': 'apple'});
+
+      final result = await users.signInWithIdToken('apple', 'id.tok.en',
+          nonce: nonce, name: '  Ann  ');
+      expect(result, isA<SignedIn>());
+      expect(c.vb.authStore.token, token);
+      expect(c.requests.last.url.path, '/api/v1/auth/users/oauth2/id-token');
+      expect(c.requests.last.headers.containsKey('authorization'), isFalse);
+      expect(jsonDecode(c.requests.last.body), {
+        'provider': 'apple',
+        'id_token': 'id.tok.en',
+        'nonce': 'n1',
+        'name': 'Ann',
+      });
+    });
+
+    test('native sign-in into an existing email returns the merge, unstored',
+        () async {
+      final c = client((_) => json({
+            'data': {
+              'merge_required': true,
+              'merge_token': 'm1',
+              'email': 'a@b.c',
+              'provider': 'google'
+            }
+          }));
+      final r =
+          await c.vb.auth.collection('users').signInWithIdToken('google', 't');
+      expect(r, isA<MergeRequired>());
+      expect(c.vb.authStore.current, isNull);
+      expect(jsonDecode(c.requests.single.body),
+          {'provider': 'google', 'id_token': 't'});
+    });
+
     test('confirming an email change signs out', () async {
       final c = client((_) => json({
             'data': {'changed': true, 'email': 'new@x'}
