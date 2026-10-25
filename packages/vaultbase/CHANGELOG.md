@@ -1,4 +1,4 @@
-## 0.1.0-dev
+## 0.1.0
 
 - The client: `Vaultbase(baseUrl)` with an `AuthStore` (memory by default),
   an optional `http.Client`, a per-request timeout and default headers.

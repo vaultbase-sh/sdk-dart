@@ -1,9 +1,15 @@
 name: vaultbase
 description: Dart client for Vaultbase, the single-binary backend. Records, auth, files and realtime.
-version: 0.1.0-dev
+version: 0.1.0
 homepage: https://vaultbase.dev
 repository: https://github.com/vaultbase-sh/sdk-dart/tree/main/packages/vaultbase
-documentation: https://docs.vaultbase.dev
+documentation: https://docs.vaultbase.dev/sdk-dart/quick-start/
+issue_tracker: https://github.com/vaultbase-sh/sdk-dart/issues
+topics:
+  - backend
+  - database
+  - realtime
+  - authentication
 resolution: workspace
 
 environment:

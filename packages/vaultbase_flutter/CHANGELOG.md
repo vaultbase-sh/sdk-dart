@@ -1,4 +1,4 @@
-## 0.1.0-dev
+## 0.1.0
 
 - `SecureAuthStore` (Keychain / Keystore via `flutter_secure_storage`) and
   `PrefsAuthStore` (shared preferences, for the web) keep the session

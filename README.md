@@ -8,7 +8,9 @@ files and realtime.
 | [`vaultbase`](packages/vaultbase) | The client, pure Dart. Works in Flutter, on the server and in CLIs. |
 | [`vaultbase_flutter`](packages/vaultbase_flutter) | Flutter helpers: secure token storage, OAuth sign-in, app lifecycle. |
 
-**Status:** in development, not published yet. The plan is 0.1.0 for server 0.27 and later.
+Both need Dart 3.6 (Flutter 3.27) and a Vaultbase server 0.27 or later. Docs:
+[docs.vaultbase.dev/sdk-dart/quick-start](https://docs.vaultbase.dev/sdk-dart/quick-start/).
+A complete Flutter app is in [`example/`](example).
 
 ## Development
 

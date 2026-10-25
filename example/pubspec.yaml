@@ -11,7 +11,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  vaultbase_flutter: ^0.1.0-dev
+  vaultbase_flutter: ^0.1.0
 
 dev_dependencies:
   flutter_test:
