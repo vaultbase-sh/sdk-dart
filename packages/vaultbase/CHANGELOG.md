@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.0
 
 - Native Apple and Google sign-in: `auth.collection(name).signInWithIdToken`
   with the ID token from the platform's sign-in sheet, and `idTokenNonce` for

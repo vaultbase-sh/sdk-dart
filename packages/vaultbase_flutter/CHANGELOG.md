@@ -1,3 +1,8 @@
+## 0.1.1
+
+- Works with `vaultbase` 0.2.0 (native Apple and Google sign-in:
+  `signInWithIdToken`).
+
 ## 0.1.0
 
 - `SecureAuthStore` (Keychain / Keystore via `flutter_secure_storage`) and
