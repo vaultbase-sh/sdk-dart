@@ -30,3 +30,7 @@
   per-record subscriptions, `ready` once the server confirms, reconnect
   with backoff, the new token sent after each refresh, `pause` / `resume`,
   and a `states` stream.
+- `AsyncAuthStore` for sessions kept in async storage: loads the saved
+  session once, writes changes in order. Requests and the realtime
+  connection wait for `authStore.ready`, so the first request after start
+  carries the saved token.

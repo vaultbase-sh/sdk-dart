@@ -205,6 +205,8 @@ class Realtime {
     final gen = ++_generation;
     _setState(
         _attempt == 0 ? RealtimeState.connecting : RealtimeState.reconnecting);
+    await _vb.authStore.ready;
+    if (gen != _generation || _subs.isEmpty) return;
     final base = Uri.parse(_vb.baseUrl);
     final uri = base.replace(
         scheme: base.scheme == 'https' ? 'wss' : 'ws',

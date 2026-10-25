@@ -1,7 +1,8 @@
 /// Dart client for Vaultbase.
 library;
 
-export 'src/auth_store.dart' show AuthStore, MemoryAuthStore, StoredAuth;
+export 'src/auth_store.dart'
+    show AsyncAuthStore, AuthStore, MemoryAuthStore, StoredAuth;
 export 'src/cancel.dart' show CancelToken;
 export 'src/client.dart' show Vaultbase;
 export 'src/errors.dart';

@@ -175,6 +175,7 @@ class Vaultbase {
     final uri = buildUrl(path, query);
     final hdrs = <String, String>{..._headers, ...?headers};
     if (!skipAuth) {
+      await authStore.ready;
       if (!skipRefresh) await _maybeRefresh();
       final token = authStore.token;
       if (token != null && token.isNotEmpty) {

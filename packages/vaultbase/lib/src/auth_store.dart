@@ -76,3 +76,51 @@ abstract class AuthStore {
 
 /// Keeps the session in memory only; it is gone when the app exits.
 class MemoryAuthStore extends AuthStore {}
+
+/// A store backed by async storage: [read] loads the saved session (a JSON
+/// string, or null) once at construction, [write] saves each change (null
+/// to delete).
+///
+/// Writes run one at a time in the order of the changes. A session saved
+/// before the load finishes wins over the loaded one. Saved data that
+/// doesn't parse is treated as no session.
+class AsyncAuthStore extends AuthStore {
+  AsyncAuthStore({
+    required Future<String?> Function() read,
+    required Future<void> Function(String? value) write,
+  }) : _write = write {
+    _ready = _load(read);
+  }
+
+  final Future<void> Function(String? value) _write;
+  late final Future<void> _ready;
+  bool _changed = false;
+  Future<void> _writes = Future.value();
+
+  @override
+  Future<void> get ready => _ready;
+
+  /// Completes once every change so far is written.
+  Future<void> get flushed => _writes;
+
+  Future<void> _load(Future<String?> Function() read) async {
+    StoredAuth? saved;
+    try {
+      final raw = await read();
+      if (raw != null && raw.isNotEmpty) {
+        saved = StoredAuth.fromJson(
+            (jsonDecode(raw) as Map).cast<String, dynamic>());
+      }
+    } on Object {
+      saved = null;
+    }
+    if (!_changed && saved != null) restore(saved);
+  }
+
+  @override
+  void persist(StoredAuth? auth) {
+    _changed = true;
+    final value = auth == null ? null : jsonEncode(auth.toJson());
+    _writes = _writes.then((_) => _write(value)).catchError((Object _) {});
+  }
+}

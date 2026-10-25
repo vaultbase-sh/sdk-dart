@@ -13,9 +13,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_secure_storage: ">=10.0.0 <12.0.0"
+  flutter_web_auth_2: ^5.0.0
+  shared_preferences: ^2.3.0
   vaultbase: ^0.1.0-dev
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  http: ^1.5.0
   lints: ^6.0.0
+  shared_preferences_platform_interface: ^2.4.0
