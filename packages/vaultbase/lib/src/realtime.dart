@@ -94,6 +94,8 @@ class Realtime {
   StreamSubscription<Object?>? _authWatch;
   Timer? _ping;
   Timer? _retry;
+  Timer? _openTimer;
+  Completer<bool>? _opening;
   int _attempt = 0;
   String? _sentToken;
 
@@ -225,13 +227,26 @@ class Realtime {
     final WebSocketChannel channel;
     try {
       channel = WebSocketChannel.connect(uri);
-      await channel.ready.timeout(_connectTimeout);
     } on Object {
-      if (gen == _generation) _scheduleReconnect();
+      _scheduleReconnect();
       return;
     }
-    if (gen != _generation || _subs.isEmpty) {
+    // Not `ready.timeout()`: its timer would outlive a close, and a test
+    // that closes the client mid-connect would fail on a pending timer.
+    final opened = _opening = Completer<bool>();
+    void settle(bool ok) {
+      if (!opened.isCompleted) opened.complete(ok);
+    }
+
+    _openTimer = Timer(_connectTimeout, () => settle(false));
+    channel.ready
+        .then((_) => settle(true), onError: (Object _) => settle(false));
+    final ok = await opened.future;
+    _openTimer?.cancel();
+    _openTimer = null;
+    if (!ok || gen != _generation || _subs.isEmpty) {
       channel.sink.close();
+      if (!ok && gen == _generation) _scheduleReconnect();
       return;
     }
     _channel = channel;
@@ -274,6 +289,11 @@ class Realtime {
     _generation++;
     _retry?.cancel();
     _retry = null;
+    _openTimer?.cancel();
+    _openTimer = null;
+    final opening = _opening;
+    if (opening != null && !opening.isCompleted) opening.complete(false);
+    _opening = null;
     _ping?.cancel();
     _ping = null;
     _messages?.cancel();

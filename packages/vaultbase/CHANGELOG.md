@@ -45,3 +45,6 @@
   `XRecord extends RecordModel` per collection with a getter per field, an
   `XCreate` with `toJson()`, and `vb.collections.<name>` returning
   `Collection<XRecord>` / `Singleton<XRecord>`.
+- Realtime: closing the client while a connection is opening leaves no
+  pending timer (widget tests failed on it), and a connection attempt that
+  times out is closed.
