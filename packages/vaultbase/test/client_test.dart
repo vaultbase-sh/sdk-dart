@@ -442,6 +442,24 @@ void main() {
       expect(results[1].ok, isTrue);
     });
 
+    test('get and list send expand, fields and exclude', () async {
+      final c = client((_) => json({'data': <Object?>[]}));
+      final batch = c.vb.batch()
+        ..get('posts', 'p1', expand: 'author', exclude: 'body,meta')
+        ..get('posts', 'p2')
+        ..list('posts', exclude: 'body');
+      await batch.run();
+      final sent = jsonDecode(c.requests.single.body) as Map;
+      final urls = [
+        for (final r in sent['requests'] as List) (r as Map)['url']
+      ];
+      expect(urls, [
+        '/api/v1/posts/p1?expand=author&exclude=body%2Cmeta',
+        '/api/v1/posts/p2',
+        '/api/v1/posts?exclude=body',
+      ]);
+    });
+
     test('empty sends nothing; over 100 throws before sending', () async {
       final c = client((_) => json({'data': <Object?>[]}));
       expect(await c.vb.batch().run(), isEmpty);

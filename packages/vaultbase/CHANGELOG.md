@@ -1,3 +1,9 @@
+## Unreleased
+
+- `exclude` on `list`, `iterate`, `get`, `Singleton.get` and `Batch.list`:
+  fields to leave out of the response, applied after `fields`. Needs server
+  0.31.0.
+
 ## 0.2.0
 
 - Native Apple and Google sign-in: `auth.collection(name).signInWithIdToken`

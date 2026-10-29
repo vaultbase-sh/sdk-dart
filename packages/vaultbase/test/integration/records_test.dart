@@ -118,6 +118,16 @@ void main() {
           filter: 'status = "list-test"', fields: 'id,title', perPage: 1);
       expect(slim.items.single.data.containsKey('views'), isFalse);
       expect(slim.totalPages, 3);
+
+      final lean = await posts.list(
+          filter: 'status = "list-test"', exclude: 'views,status', perPage: 1);
+      final item = lean.items.single;
+      expect(item.data.containsKey('views'), isFalse);
+      expect(item.data.containsKey('status'), isFalse);
+      expect(item.data.containsKey('title'), isTrue);
+      final one =
+          await posts.get(item.id, fields: 'title,views', exclude: 'views');
+      expect(one.data.keys.toSet(), {'id', 'title'});
     }, skip: skip);
 
     test('iterate reads every page; skipTotal gives -1 totals', () async {

@@ -17,6 +17,8 @@ class Collection<T> {
 
   /// One page of records. [filter], [sort], [expand] and [fields] use the
   /// server's syntax; build filters with values safely with `vb.filter`.
+  /// [exclude] leaves fields out, after [fields]; `id` is always returned
+  /// (server 0.31.0 or later).
   /// With [skipTotal] the server doesn't count, and the totals are -1.
   Future<ListResult<T>> list({
     int? page,
@@ -25,6 +27,7 @@ class Collection<T> {
     String? sort,
     String? expand,
     String? fields,
+    String? exclude,
     String? search,
     bool skipTotal = false,
     CancelToken? cancelToken,
@@ -38,6 +41,7 @@ class Collection<T> {
             sort: sort,
             expand: expand,
             fields: fields,
+            exclude: exclude,
             search: search,
             skipTotal: skipTotal),
         cancelToken: cancelToken,
@@ -52,6 +56,7 @@ class Collection<T> {
     String? sort,
     String? expand,
     String? fields,
+    String? exclude,
     String? search,
     bool skipTotal = false,
     CancelToken? cancelToken,
@@ -65,6 +70,7 @@ class Collection<T> {
           sort: sort,
           expand: expand,
           fields: fields,
+          exclude: exclude,
           search: search,
           skipTotal: skipTotal,
           cancelToken: cancelToken);
@@ -85,10 +91,11 @@ class Collection<T> {
   Future<T> get(String id,
       {String? expand,
       String? fields,
+      String? exclude,
       CancelToken? cancelToken,
       String? requestKey}) async {
     final data = await _vb.request(_recordPath(id),
-        query: {'expand': expand, 'fields': fields},
+        query: {'expand': expand, 'fields': fields, 'exclude': exclude},
         cancelToken: cancelToken,
         requestKey: requestKey);
     return _decode((data as Map).cast<String, dynamic>());
@@ -183,6 +190,7 @@ Map<String, Object?> listQuery({
   String? sort,
   String? expand,
   String? fields,
+  String? exclude,
   String? search,
   bool skipTotal = false,
 }) =>
@@ -193,6 +201,7 @@ Map<String, Object?> listQuery({
       'sort': sort,
       'expand': expand,
       'fields': fields,
+      'exclude': exclude,
       'search': search,
       'skipTotal': skipTotal ? '1' : null,
     };

@@ -18,9 +18,12 @@ class Singleton<T> {
   String get _path => '/api/v1/${Uri.encodeComponent(name)}';
 
   Future<T> get(
-      {String? expand, String? fields, CancelToken? cancelToken}) async {
+      {String? expand,
+      String? fields,
+      String? exclude,
+      CancelToken? cancelToken}) async {
     final data = await _vb.request(_path,
-        query: {'expand': expand, 'fields': fields},
+        query: {'expand': expand, 'fields': fields, 'exclude': exclude},
         cancelToken: cancelToken,
         onResponse: _captureEtag);
     return _decode((data as Map).cast<String, dynamic>());

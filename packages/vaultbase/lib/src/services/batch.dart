@@ -31,7 +31,20 @@ class Batch {
   Batch delete(String collection, String id) =>
       _add('DELETE', _path(collection, id));
 
-  Batch get(String collection, String id) => _add('GET', _path(collection, id));
+  /// [expand], [fields] and [exclude] as on `Collection.get` (server 0.31.0
+  /// or later).
+  Batch get(String collection, String id,
+      {String? expand, String? fields, String? exclude}) {
+    final query = {
+      if (expand != null) 'expand': expand,
+      if (fields != null) 'fields': fields,
+      if (exclude != null) 'exclude': exclude,
+    };
+    final url = Uri(
+        path: _path(collection, id),
+        queryParameters: query.isEmpty ? null : query);
+    return _add('GET', url.toString());
+  }
 
   Batch list(
     String collection, {
@@ -41,6 +54,7 @@ class Batch {
     String? sort,
     String? expand,
     String? fields,
+    String? exclude,
     String? search,
     bool skipTotal = false,
   }) {
@@ -52,6 +66,7 @@ class Batch {
               sort: sort,
               expand: expand,
               fields: fields,
+              exclude: exclude,
               search: search,
               skipTotal: skipTotal)
           .entries)
