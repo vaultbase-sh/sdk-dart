@@ -1,3 +1,7 @@
+## 0.1.2
+
+- Works with `vaultbase` 0.3.0 (`exclude` on reads).
+
 ## 0.1.1
 
 - Works with `vaultbase` 0.2.0 (native Apple and Google sign-in:

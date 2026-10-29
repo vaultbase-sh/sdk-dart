@@ -1,8 +1,9 @@
-## Unreleased
+## 0.3.0
 
 - `exclude` on `list`, `iterate`, `get`, `Singleton.get` and `Batch.list`:
-  fields to leave out of the response, applied after `fields`. Needs server
-  0.31.0.
+  fields to leave out of the response, applied after `fields`.
+- `Batch.get` takes `expand`, `fields` and `exclude`.
+- Both need server 0.31.0.
 
 ## 0.2.0
 
