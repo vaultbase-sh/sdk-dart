@@ -76,6 +76,57 @@ void main() {
       ],
     });
     await create({
+      'name': 'orders',
+      'type': 'base',
+      'fields': [
+        {
+          'name': 'items',
+          'type': 'group',
+          'required': true,
+          'options': {
+            'max': 10,
+            'fields': [
+              {'name': 'sku', 'type': 'text', 'required': true},
+              {'name': 'qty', 'type': 'number', 'required': true},
+              {'name': 'price', 'type': 'number'},
+              {'name': 'gift', 'type': 'bool'},
+              {
+                'name': 'size',
+                'type': 'select',
+                'options': {
+                  'values': ['S', 'M']
+                }
+              },
+              {
+                'name': 'tags',
+                'type': 'select',
+                'options': {
+                  'multiple': true,
+                  'values': ['x', 'y']
+                }
+              },
+              {'name': 'ship_on', 'type': 'date'},
+              {'name': 'extra', 'type': 'json'},
+              {'name': 'class', 'type': 'text'},
+              {'name': 'to_json', 'type': 'text'},
+            ],
+          },
+        },
+        {
+          'name': 'address',
+          'type': 'group',
+          'options': {
+            'multiple': false,
+            'fields': [
+              {'name': 'city', 'type': 'text', 'required': true},
+              {'name': 'zip', 'type': 'text'},
+              {'name': 'since', 'type': 'date', 'required': true},
+            ],
+          },
+        },
+      ],
+    });
+    await create({
       'name': 'site_settings',
       'type': 'singleton',
       'fields': [
@@ -170,6 +221,54 @@ void main() {
     expect(post.embedding, isEmpty);
     expect(PostsRecord(const {}).title, '');
     expect(PostsRecord(const {}).rating, 0);
+  }, skip: skip);
+
+  test('group items round-trip, keeping their ids', () async {
+    final ship = DateTime.utc(2026, 11, 2);
+    final order = await vb.collections.orders.create(OrdersCreate(
+      items: [
+        OrdersItemsItem(
+            sku: 'A-1',
+            qty: 2,
+            price: 9.5,
+            gift: true,
+            size: 'M',
+            tags: ['x'],
+            shipOn: ship,
+            extra: {'n': 1},
+            classField: 'c',
+            toJsonField: 't'),
+        const OrdersItemsItem(sku: 'B-2', qty: 1),
+      ],
+      address: OrdersAddress(city: 'Oslo', since: DateTime.utc(2020)),
+    ).toJson());
+
+    final got = await vb.collections.orders.get(order.id);
+    expect(got.items, hasLength(2));
+    final first = got.items.first;
+    expect(first.id, matches(RegExp(r'^[a-z0-9]{15}$')));
+    expect(first.sku, 'A-1');
+    expect(first.qty, 2);
+    expect(first.price, 9.5);
+    expect(first.gift, isTrue);
+    expect(first.size, 'M');
+    expect(first.tags, ['x']);
+    expect(first.shipOn, ship);
+    expect(first.extra, {'n': 1});
+    expect(first.classField, 'c');
+    expect(first.toJsonField, 't');
+    expect(got.items.last.price, isNull);
+    expect(got.items.last.tags, isNull);
+    expect(got.address?.city, 'Oslo');
+    expect(got.address?.zip, isNull);
+    expect(got.address?.since, DateTime.utc(2020));
+
+    // Sent back as read, the items keep their ids.
+    final again = await vb.collections.orders.update(order.id, {
+      'items': [for (final i in got.items) i.toJson()]
+    });
+    expect(
+        [for (final i in again.items) i.id], [for (final i in got.items) i.id]);
   }, skip: skip);
 
   test('a singleton has its typed record', () async {

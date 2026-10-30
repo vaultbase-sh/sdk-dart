@@ -38,16 +38,38 @@ String generateDart(List<Map<String, dynamic>> collections,
   };
   final classNames = {'Vaultbase'};
   var usesGeo = false;
-
+  var usesGroupDate = false;
+  // Group classes are named after their collection and field; kept clear of
+  // every record and create class, and of the library's own.
+  final typeNames = {
+    'Vaultbase', 'VaultbaseCollections', 'RecordModel', 'Collection', //
+    'Singleton',
+  };
+  final bases = <Map<String, dynamic>, String>{};
   for (final col in collections) {
     final name = col['name'];
     if (name is! String || !_collectionName.hasMatch(name)) continue;
+    final base = _unique(_pascal(name), classNames);
+    bases[col] = base;
+    typeNames.addAll(['${base}Record', '${base}Create']);
+  }
+
+  for (final col in collections) {
+    final base = bases[col];
+    if (base == null) continue;
+    final name = col['name'] as String;
     final type = col['type'] as String? ?? 'base';
     final fields = [
       for (final f in _parseFields(col['fields']))
         if (_keepField(f, type)) f
     ];
-    final base = _unique(_pascal(name), classNames);
+    for (final f in fields.where((f) => f.type == 'group')) {
+      final cls = _unique(
+          '$base${_pascal(f.name)}${f.groupList ? 'Item' : ''}', typeNames);
+      f.groupClass = cls;
+      classes.add(_emitGroup(cls, name, f));
+      usesGroupDate = usesGroupDate || f.subfields.any((s) => s.type == 'date');
+    }
     final names = _fieldNames(
         fields, type == 'auth' ? _recordMembers : _recordMembersNoAuth);
     usesGeo = usesGeo || fields.any((f) => f.type == 'geoPoint');
@@ -103,6 +125,12 @@ String generateDart(List<Map<String, dynamic>> collections,
           "lng: (v['lng'] as num).toDouble())",
       '    : null;',
     ],
+    if (usesGroupDate) ...[
+      '',
+      'DateTime? _groupDate(Object? v) => v is num',
+      '    ? DateTime.fromMillisecondsSinceEpoch(v.toInt() * 1000, isUtc: true)',
+      '    : null;',
+    ],
     '',
   ];
   return parts.join('\n');
@@ -143,13 +171,24 @@ class _Field {
         type = json['type'] as String? ?? '',
         required = json['required'] == true,
         system = json['system'] == true,
-        multiple = (json['options'] as Map?)?['multiple'] == true;
+        multiple = (json['options'] as Map?)?['multiple'] == true,
+        groupList = (json['options'] as Map?)?['multiple'] != false,
+        subfields = _parseFields((json['options'] as Map?)?['fields']);
 
   final String name;
   final String type;
   final bool required;
   final bool system;
   final bool multiple;
+
+  /// A group: a list of items (the default), or one object.
+  final bool groupList;
+
+  /// A group's subfields.
+  final List<_Field> subfields;
+
+  /// The class generated for a group's items.
+  String? groupClass;
 
   bool get isList =>
       type == 'vector' || ((type == 'select' || type == 'file') && multiple);
@@ -275,6 +314,95 @@ String _emitCreate(String className, String collection, String type,
   ].join('\n');
 }
 
+/// Members a subfield's Dart name must not take.
+const _groupMembers = {
+  'id', 'fromJson', 'toJson', 'toString', 'hashCode', 'runtimeType', //
+  'noSuchMethod',
+};
+
+/// The class for a group's items (or its one object): a final member per
+/// subfield, `fromJson` and `toJson`. A list item keeps the `id` the server
+/// gave it, so sending it back updates that item.
+String _emitGroup(String className, String collection, _Field group) {
+  final subs = [
+    for (final s in group.subfields)
+      if (_fieldName.hasMatch(s.name)) s
+  ];
+  final names = _fieldNames(subs, _groupMembers);
+  final params = <String>[if (group.groupList) 'this.id'];
+  final members = <String>[
+    if (group.groupList)
+      '/// Set by the server; keep it when sending the item back.\n'
+          'final String? id;',
+  ];
+  final reads = <String>[if (group.groupList) "id: json['id'] as String?"];
+  final writes = <String>[if (group.groupList) "if (id != null) 'id': id"];
+  for (final s in subs) {
+    final n = names[s.name]!;
+    final key = _dartString(s.name);
+    final t = _subType(s);
+    final nullable = t.endsWith('?') || !s.required;
+    params.add(s.required ? 'required this.$n' : 'this.$n');
+    members.add('final ${nullable && !t.endsWith('?') ? '$t?' : t} $n;');
+    reads.add('$n: ${_subRead(s, "json[$key]")}');
+    final v = _subWrite(s, nullable ? '$n!' : n);
+    writes.add(nullable ? 'if ($n != null) $key: $v' : '$key: $v');
+  }
+  final what = group.groupList ? 'An item of' : 'The value of';
+  return [
+    '/// $what `$collection.${group.name}`.',
+    'class $className {',
+    '  const $className({${params.join(', ')}});',
+    '',
+    '  factory $className.fromJson(Map<String, dynamic> json) => $className(',
+    for (final r in reads) '        $r,',
+    '      );',
+    for (final m in members) ...['', for (final l in m.split('\n')) '  $l'],
+    '',
+    '  Map<String, dynamic> toJson() => {${writes.join(', ')}};',
+    '}',
+  ].join('\n');
+}
+
+String _subType(_Field s) {
+  if (s.type == 'select' && s.multiple) return 'List<String>';
+  return switch (s.type) {
+    'date' => 'DateTime',
+    'json' => 'Object?',
+    _ => _scalar(s),
+  };
+}
+
+/// A subfield read from an item. A required one that an older item lacks
+/// reads as the type's empty value, as a required record field does.
+String _subRead(_Field s, String v) {
+  if (s.type == 'select' && s.multiple) {
+    final list = '[for (final e in $v as List) if (e is String) e]';
+    return s.required
+        ? '$v is List ? $list : const <String>[]'
+        : '$v is List ? $list : null';
+  }
+  switch (s.type) {
+    case 'date':
+      return s.required
+          ? '_groupDate($v) ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)'
+          : '_groupDate($v)';
+    case 'json':
+      return v;
+  }
+  final t = _scalar(s);
+  if (t == 'Object') return v;
+  if (!s.required) return '$v as $t?';
+  return switch (t) {
+    'String' => "$v as String? ?? ''",
+    'bool' => '$v as bool? ?? false',
+    _ => '$v as num? ?? 0',
+  };
+}
+
+String _subWrite(_Field s, String v) =>
+    s.type == 'date' ? '$v.toUtc().toIso8601String()' : v;
+
 String _scalar(_Field f) => switch (f.type) {
       'number' => 'num',
       'bool' => 'bool',
@@ -292,6 +420,9 @@ String _scalar(_Field f) => switch (f.type) {
     };
 
 String _readType(_Field f, bool required) {
+  if (f.type == 'group') {
+    return f.groupList ? 'List<${f.groupClass}>' : '${f.groupClass}?';
+  }
   if (f.isList) return f.type == 'vector' ? 'List<double>' : 'List<String>';
   switch (f.type) {
     case 'date' || 'autodate':
@@ -307,6 +438,13 @@ String _readType(_Field f, bool required) {
 
 String _readExpr(_Field f, bool required) {
   final key = _dartString(f.name);
+  if (f.type == 'group') {
+    return f.groupList
+        ? '[for (final v in getList<Map<dynamic, dynamic>>($key)) '
+            '${f.groupClass}.fromJson(v.cast<String, dynamic>())]'
+        : 'data[$key] is Map ? ${f.groupClass}.fromJson('
+            '(data[$key] as Map).cast<String, dynamic>()) : null';
+  }
   if (f.isList) {
     return f.type == 'vector'
         ? '[for (final v in getList<num>($key)) v.toDouble()]'
@@ -334,6 +472,9 @@ String _readExpr(_Field f, bool required) {
 }
 
 String _writeType(_Field f) {
+  if (f.type == 'group') {
+    return f.groupList ? 'List<${f.groupClass}>' : f.groupClass!;
+  }
   if (f.isList) return f.type == 'vector' ? 'List<double>' : 'List<String>';
   return switch (f.type) {
     'date' => 'DateTime',
@@ -344,6 +485,8 @@ String _writeType(_Field f) {
 }
 
 String _writeExpr(_Field f, String v) => switch (f.type) {
+      'group' when f.groupList => '[for (final i in $v) i.toJson()]',
+      'group' => '$v.toJson()',
       'date' => '$v.toUtc().toIso8601String()',
       'geoPoint' => "{'lat': $v.lat, 'lng': $v.lng}",
       _ => v,

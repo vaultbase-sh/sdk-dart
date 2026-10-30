@@ -195,6 +195,135 @@ class UsersCreate {
       };
 }
 
+/// An item of `orders.items`.
+class OrdersItemsItem {
+  const OrdersItemsItem(
+      {this.id,
+      required this.sku,
+      required this.qty,
+      this.price,
+      this.gift,
+      this.size,
+      this.tags,
+      this.shipOn,
+      this.extra,
+      this.classField,
+      this.toJsonField});
+
+  factory OrdersItemsItem.fromJson(Map<String, dynamic> json) =>
+      OrdersItemsItem(
+        id: json['id'] as String?,
+        sku: json['sku'] as String? ?? '',
+        qty: json['qty'] as num? ?? 0,
+        price: json['price'] as num?,
+        gift: json['gift'] as bool?,
+        size: json['size'] as String?,
+        tags: json['tags'] is List
+            ? [
+                for (final e in json['tags'] as List)
+                  if (e is String) e
+              ]
+            : null,
+        shipOn: _groupDate(json['ship_on']),
+        extra: json['extra'],
+        classField: json['class'] as String?,
+        toJsonField: json['to_json'] as String?,
+      );
+
+  /// Set by the server; keep it when sending the item back.
+  final String? id;
+
+  final String sku;
+
+  final num qty;
+
+  final num? price;
+
+  final bool? gift;
+
+  final String? size;
+
+  final List<String>? tags;
+
+  final DateTime? shipOn;
+
+  final Object? extra;
+
+  final String? classField;
+
+  final String? toJsonField;
+
+  Map<String, dynamic> toJson() => {
+        if (id != null) 'id': id,
+        'sku': sku,
+        'qty': qty,
+        if (price != null) 'price': price!,
+        if (gift != null) 'gift': gift!,
+        if (size != null) 'size': size!,
+        if (tags != null) 'tags': tags!,
+        if (shipOn != null) 'ship_on': shipOn!.toUtc().toIso8601String(),
+        if (extra != null) 'extra': extra!,
+        if (classField != null) 'class': classField!,
+        if (toJsonField != null) 'to_json': toJsonField!
+      };
+}
+
+/// The value of `orders.address`.
+class OrdersAddress {
+  const OrdersAddress({required this.city, this.zip, required this.since});
+
+  factory OrdersAddress.fromJson(Map<String, dynamic> json) => OrdersAddress(
+        city: json['city'] as String? ?? '',
+        zip: json['zip'] as String?,
+        since: _groupDate(json['since']) ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      );
+
+  final String city;
+
+  final String? zip;
+
+  final DateTime since;
+
+  Map<String, dynamic> toJson() => {
+        'city': city,
+        if (zip != null) 'zip': zip!,
+        'since': since.toUtc().toIso8601String()
+      };
+}
+
+/// A record of `orders`.
+class OrdersRecord extends RecordModel {
+  OrdersRecord(super.data);
+
+  factory OrdersRecord.fromJson(Map<String, dynamic> json) =>
+      OrdersRecord(json);
+
+  List<OrdersItemsItem> get items => [
+        for (final v in getList<Map<dynamic, dynamic>>('items'))
+          OrdersItemsItem.fromJson(v.cast<String, dynamic>())
+      ];
+
+  OrdersAddress? get address => data['address'] is Map
+      ? OrdersAddress.fromJson((data['address'] as Map).cast<String, dynamic>())
+      : null;
+}
+
+/// Fields for a new `orders` record:
+/// `collections.orders.create(OrdersCreate(...).toJson())`.
+class OrdersCreate {
+  const OrdersCreate({required this.items, this.address});
+
+  final List<OrdersItemsItem> items;
+
+  final OrdersAddress? address;
+
+  Map<String, dynamic> toJson() => {
+        'items': [for (final i in items) i.toJson()],
+        if (address != null) 'address': address!.toJson()
+      };
+}
+
 /// A record of `post_stats`.
 class PostStatsRecord extends RecordModel {
   PostStatsRecord(super.data);
@@ -242,6 +371,9 @@ class VaultbaseCollections {
   Collection<UsersRecord> get users =>
       vb.collectionOf('users', UsersRecord.fromJson);
 
+  Collection<OrdersRecord> get orders =>
+      vb.collectionOf('orders', OrdersRecord.fromJson);
+
   Collection<PostStatsRecord> get postStats =>
       vb.collectionOf('post_stats', PostStatsRecord.fromJson);
 
@@ -260,3 +392,7 @@ extension VaultbaseSchema on Vaultbase {
     v is Map && v['lat'] is num && v['lng'] is num
         ? (lat: (v['lat'] as num).toDouble(), lng: (v['lng'] as num).toDouble())
         : null;
+
+DateTime? _groupDate(Object? v) => v is num
+    ? DateTime.fromMillisecondsSinceEpoch(v.toInt() * 1000, isUtc: true)
+    : null;

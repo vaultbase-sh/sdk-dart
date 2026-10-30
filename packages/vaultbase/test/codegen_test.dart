@@ -76,6 +76,43 @@ void main() {
     expect(out, isNot(contains('this.edited')));
   });
 
+  test('a class per group: list items with an id, or one object', () {
+    expect(out, contains('class OrdersItemsItem {'));
+    expect(out, contains("id: json['id'] as String?,"));
+    expect(out, contains("sku: json['sku'] as String? ?? '',"));
+    expect(out, contains("shipOn: _groupDate(json['ship_on']),"));
+    expect(out, contains("if (toJsonField != null) 'to_json': toJsonField!"));
+    expect(out, contains('class OrdersAddress {'));
+    expect(out, isNot(contains('OrdersAddressItem')));
+    expect(out, contains('List<OrdersItemsItem> get items => ['));
+    expect(out, contains('OrdersAddress? get address =>'));
+    expect(out, contains("'items': [for (final i in items) i.toJson()],"));
+    expect(out, contains("if (address != null) 'address': address!.toJson()"));
+  });
+
+  test('group classes stay clear of record and create class names', () {
+    final out = generateDart([
+      {
+        'name': 'posts',
+        'fields': [
+          {
+            'name': 'record',
+            'type': 'group',
+            'options': {
+              'multiple': false,
+              'fields': [
+                {'name': 'a', 'type': 'text'}
+              ]
+            }
+          }
+        ]
+      }
+    ]);
+    expect(out, contains('class PostsRecord extends RecordModel {'));
+    expect(out, contains('class PostsRecord2 {'));
+    expect(out, contains('PostsRecord2? get record =>'));
+  });
+
   test('colliding class and accessor names are deduped', () {
     final dup = generateDart([
       {'name': 'my_posts', 'type': 'base', 'fields': <Object?>[]},

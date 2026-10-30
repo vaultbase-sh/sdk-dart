@@ -40,6 +40,29 @@
       ]
     },
     {
+      "name": "orders",
+      "type": "base",
+      "fields": [
+        { "name": "items", "type": "group", "required": true, "options": { "max": 10, "fields": [
+          { "name": "sku", "type": "text", "required": true },
+          { "name": "qty", "type": "number", "required": true },
+          { "name": "price", "type": "number" },
+          { "name": "gift", "type": "bool" },
+          { "name": "size", "type": "select", "options": { "values": ["S", "M"] } },
+          { "name": "tags", "type": "select", "options": { "multiple": true, "values": ["x", "y"] } },
+          { "name": "ship_on", "type": "date" },
+          { "name": "extra", "type": "json" },
+          { "name": "class", "type": "text" },
+          { "name": "to_json", "type": "text" }
+        ] } },
+        { "name": "address", "type": "group", "options": { "multiple": false, "fields": [
+          { "name": "city", "type": "text", "required": true },
+          { "name": "zip", "type": "text" },
+          { "name": "since", "type": "date", "required": true }
+        ] } }
+      ]
+    },
+    {
       "name": "post_stats",
       "type": "view",
       "fields": [{ "name": "count", "type": "number" }]
