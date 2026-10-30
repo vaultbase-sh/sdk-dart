@@ -1,3 +1,8 @@
+## 0.1.3
+
+- Works with `vaultbase` 0.4.0 (typed group fields from
+  `dart run vaultbase:types`).
+
 ## 0.1.2
 
 - Works with `vaultbase` 0.3.0 (`exclude` on reads).

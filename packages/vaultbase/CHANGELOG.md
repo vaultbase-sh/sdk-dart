@@ -1,3 +1,11 @@
+## 0.4.0
+
+- `dart run vaultbase:types` generates a class per group field, named after
+  the collection and field (`OrdersItemsItem`, or `OrdersAddress` for a
+  single object), with a member per subfield, the item's `id`, `fromJson`
+  and `toJson`. Records get `List<OrdersItemsItem>` (or `OrdersAddress?`)
+  getters; create classes take them. Group fields need server 0.32.0.
+
 ## 0.3.0
 
 - `exclude` on `list`, `iterate`, `get`, `Singleton.get` and `Batch.list`:
