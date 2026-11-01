@@ -1,3 +1,10 @@
+## Unreleased
+
+- `MaintenanceException`: a 503 from a server in maintenance mode, with
+  its `level` (`full` or `readOnly`) and, when the admin set a time,
+  `until` and `retryAfter`. `VaultbaseException` is sealed, so an
+  exhaustive `switch` over it needs the new case.
+
 ## 0.4.0
 
 - `dart run vaultbase:types` generates a class per group field, named after

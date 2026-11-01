@@ -344,6 +344,26 @@ class Vaultbase {
             status: status,
             code: code,
             body: data);
+      case 503 when data is Map && data['maintenance'] is Map:
+        final m = data['maintenance'] as Map;
+        final until = m['until'];
+        // The body carries the retry hint; Retry-After is the fallback.
+        final secs = m['retry_after'] is num
+            ? (m['retry_after'] as num).toDouble()
+            : double.tryParse(res.headers['retry-after'] ?? '');
+        throw MaintenanceException(message ?? 'Down for maintenance',
+            level: m['level'] == 'read_only'
+                ? MaintenanceLevel.readOnly
+                : MaintenanceLevel.full,
+            until: until is int
+                ? DateTime.fromMillisecondsSinceEpoch(until * 1000, isUtc: true)
+                : null,
+            retryAfter: secs == null
+                ? null
+                : Duration(milliseconds: (secs * 1000).round()),
+            status: status,
+            code: code,
+            body: data);
       default:
         throw ServerException(message ?? 'HTTP $status',
             status: status, code: code, body: data);

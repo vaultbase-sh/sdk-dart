@@ -82,6 +82,35 @@ final class PreconditionFailedException extends VaultbaseException {
   final String? currentEtag;
 }
 
+/// The level of a server's maintenance mode.
+enum MaintenanceLevel {
+  /// Every client request is refused.
+  full,
+
+  /// Reads still work; writes are refused.
+  readOnly,
+}
+
+/// 503 from a server in maintenance mode. [until] and [retryAfter] are set
+/// when the admin said when it should be back.
+final class MaintenanceException extends VaultbaseException {
+  const MaintenanceException(super.message,
+      {this.level = MaintenanceLevel.full,
+      this.until,
+      this.retryAfter,
+      super.status,
+      super.code,
+      super.body});
+
+  final MaintenanceLevel level;
+
+  /// When the admin expects to be back.
+  final DateTime? until;
+
+  /// How long until then.
+  final Duration? retryAfter;
+}
+
 /// Any other non-2xx response.
 final class ServerException extends VaultbaseException {
   const ServerException(super.message, {super.status, super.code, super.body});

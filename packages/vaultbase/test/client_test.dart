@@ -114,6 +114,35 @@ void main() {
       expect(short.retryAfter, const Duration(milliseconds: 500));
     });
 
+    test('a maintenance-mode 503 is MaintenanceException', () async {
+      final e = await errorFor(json({
+        'error': 'Upgrading',
+        'code': 503,
+        'maintenance': {
+          'level': 'read_only',
+          'until': 1900000000,
+          'retry_after': 90
+        },
+      }, status: 503)) as MaintenanceException;
+      expect(e.message, 'Upgrading');
+      expect(e.level, MaintenanceLevel.readOnly);
+      expect(e.until,
+          DateTime.fromMillisecondsSinceEpoch(1900000000000, isUtc: true));
+      expect(e.retryAfter, const Duration(seconds: 90));
+      final header = await errorFor(json(
+          {
+            'error': 'Down',
+            'maintenance': {'level': 'full'},
+          },
+          status: 503,
+          headers: {'retry-after': '30'})) as MaintenanceException;
+      expect(header.level, MaintenanceLevel.full);
+      expect(header.until, isNull);
+      expect(header.retryAfter, const Duration(seconds: 30));
+      final other = await errorFor(json({'error': 'busy'}, status: 503));
+      expect(other, isA<ServerException>());
+    });
+
     test('network failures are NetworkException', () async {
       final c = client((_) => throw http.ClientException('connection refused'));
       await expectLater(c.vb.send('/x'), throwsA(isA<NetworkException>()));
