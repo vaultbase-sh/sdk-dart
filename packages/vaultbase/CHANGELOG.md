@@ -1,3 +1,28 @@
+## Unreleased
+
+- `buildFilter` throws on a list (the filter language has no list value;
+  the server answered 400) and writes doubles as plain decimals
+  (`1e21`, `1e-7` were sent in exponent form, which the server refuses).
+- Realtime: a server that accepts and then closes at once (connection cap,
+  maintenance) is retried with growing delays instead of about four times
+  a second; the backoff starts over once a connection stays up 5 s. A
+  server that refuses the app's origin isn't retried.
+- `RealtimeSubscription.ready` completes when the subscription is
+  cancelled, the client is closed or the origin is refused, instead of
+  never.
+- A token refresh that ends after a sign-out or a new sign-in leaves that
+  session alone (it used to store the refreshed token, or clear the new
+  session when the refresh was refused).
+- Only a successful response's ETag is cached: a 412's let a blind retry of
+  the same update overwrite the other write. The cache keeps the latest
+  1000 records.
+- `BatchResult.record` returns the operation's record; a record with a
+  JSON field named `data` returned that field.
+- `Batch.list(search:)` is deprecated and no longer sent: the server's
+  batch list ignores it.
+- `dart run vaultbase:types`: a collection whose name doesn't start with a
+  letter (`_2fa`) gets a valid class name (`C2faRecord`).
+
 ## 0.5.0
 
 - `params:` on `list`, `iterate`, `get` and `aggregate` fills a view

@@ -46,6 +46,8 @@ class Batch {
     return _add('GET', url.toString());
   }
 
+  /// The options as on `Collection.list`, except `search`: the server's
+  /// batch list ignores it, so it is deprecated here and not sent.
   Batch list(
     String collection, {
     int? page,
@@ -55,6 +57,7 @@ class Batch {
     String? expand,
     String? fields,
     String? exclude,
+    @Deprecated('The server ignores search in a batch list; it is not sent.')
     String? search,
     bool skipTotal = false,
   }) {
@@ -67,7 +70,6 @@ class Batch {
               expand: expand,
               fields: fields,
               exclude: exclude,
-              search: search,
               skipTotal: skipTotal)
           .entries)
         if (e.value != null) e.key: '${e.value}',

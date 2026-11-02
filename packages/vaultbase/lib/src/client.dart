@@ -179,10 +179,11 @@ class Vaultbase {
   }) async {
     final uri = buildUrl(path, query);
     final hdrs = <String, String>{..._headers, ...?headers};
+    String? sentToken;
     if (!skipAuth) {
       await authStore.ready;
       if (!skipRefresh) await _maybeRefresh();
-      final token = authStore.token;
+      final token = sentToken = authStore.token;
       if (token != null && token.isNotEmpty) {
         hdrs['Authorization'] = 'Bearer $token';
       }
@@ -275,11 +276,13 @@ class Vaultbase {
     if (cancel?.isCancelled ?? false) throw const CancelledException();
     if (timedOut) throw const NetworkException('Request timed out');
 
-    _captureEtag(uri.path, res);
-    onResponse?.call(res);
-
     final data = _decode(res);
     final status = res.statusCode;
+    // Only a success's: a 412 carries the current ETag, and caching it would
+    // let a blind retry of the same update overwrite the other write.
+    if (status >= 200 && status < 300) _captureEtag(uri.path, res);
+    onResponse?.call(res);
+
     if (status >= 200 && status < 300) return _unwrap(data);
 
     final message = _message(data);
@@ -320,7 +323,8 @@ class Vaultbase {
           throw AuthException(AuthFailure.forbidden, message ?? 'Unauthorized',
               status: status, code: code, body: data);
         }
-        authStore.clear();
+        // Signed out or in again while this ran: leave that session alone.
+        if (authStore.token == sentToken) authStore.clear();
         throw AuthException(AuthFailure.expired, message ?? 'Unauthorized',
             status: status, code: code, body: data);
       case 403:
@@ -384,18 +388,19 @@ class Vaultbase {
       data = await request('/api/v1/auth/refresh',
           method: 'POST', skipRefresh: true, autoCancel: false);
     } on AuthException {
-      authStore.clear();
+      // Refused: end the session, unless a newer one replaced it meanwhile.
+      if (authStore.token == previous.token) authStore.clear();
       return false;
     }
+    // Signed out or signed in again while this ran: leave that session alone.
+    final now = authStore.current;
+    if (now?.token != previous.token) return false;
     final token = data is Map ? data['token'] : null;
     if (token is! String || token.isEmpty) {
       authStore.clear();
       return false;
     }
-    // Keep the record of the session that was refreshed, unless another
-    // sign-in replaced it meanwhile.
-    final now = authStore.current;
-    authStore.save(StoredAuth(token, record: (now ?? previous).record));
+    authStore.save(StoredAuth(token, record: now!.record));
     return true;
   }
 

@@ -49,7 +49,7 @@ String generateDart(List<Map<String, dynamic>> collections,
   for (final col in collections) {
     final name = col['name'];
     if (name is! String || !_collectionName.hasMatch(name)) continue;
-    final base = _unique(_pascal(name), classNames);
+    final base = _unique(_typeBase(name), classNames);
     bases[col] = base;
     typeNames.addAll(['${base}Record', '${base}Create', '${base}Params']);
   }
@@ -580,6 +580,13 @@ String _camel(String s) {
 String _pascal(String s) {
   final c = _camel(s);
   return c[0].toUpperCase() + c.substring(1);
+}
+
+/// A collection's class name prefix: PascalCase, starting with a letter
+/// (`_2fa` would make `2faRecord`).
+String _typeBase(String collection) {
+  final p = _pascal(collection);
+  return RegExp('^[A-Za-z]').hasMatch(p) ? p : 'C$p';
 }
 
 /// A Dart identifier: not a keyword, not starting with a digit.

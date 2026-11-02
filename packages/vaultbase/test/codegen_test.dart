@@ -154,6 +154,16 @@ void main() {
     expect(dup, contains('get hashCode2 =>'));
   });
 
+  test('class names start with a letter', () {
+    final odd = generateDart([
+      {'name': '_2fa', 'type': 'base', 'fields': <Object?>[]},
+      {'name': '_', 'type': 'base', 'fields': <Object?>[]},
+    ]);
+    expect(odd, contains('class C2faRecord '));
+    expect(odd, contains('get f2fa =>'));
+    expect(odd, isNot(contains('class 2fa')));
+  });
+
   test('snapshot shapes: a list, {collections}, and the data envelope', () {
     final one = [
       {'name': 'a', 'type': 'base', 'fields': <Object?>[]}

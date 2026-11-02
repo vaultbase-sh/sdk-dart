@@ -19,13 +19,27 @@ void main() {
     expect(buildFilter('c > {:d}', {'d': d}), 'c > "2026-10-24T09:05:07.042Z"');
   });
 
-  test('lists and fields', () {
+  test('doubles are plain decimals, never exponents', () {
+    String f(double d) => buildFilter('n = {:n}', {'n': d});
+    expect(f(1e21), 'n = 1000000000000000000000');
+    expect(f(-1.5e22), 'n = -15000000000000000000000');
+    expect(f(1e-7), 'n = 0.0000001');
+    expect(f(-2.5e-8), 'n = -0.000000025');
+    expect(f(1.5), 'n = 1.5');
+    expect(f(100.0), 'n = 100.0');
+  });
+
+  test('lists throw: the filter language has no list value', () {
     expect(
-        buildFilter('{:f} ?= {:l}', {
-          'f': Field('meta.tag'),
-          'l': ['a', 1]
-        }),
-        'meta.tag ?= ("a", 1)');
+        () => buildFilter('t ?= {:l}', {
+              'l': ['a', 1]
+            }),
+        throwsA(isA<ArgumentError>()
+            .having((e) => '${e.message}', 'message', contains('||'))));
+  });
+
+  test('fields', () {
+    expect(buildFilter('{:f} = 1', {'f': Field('meta.tag')}), 'meta.tag = 1');
     expect(() => Field('a b'), throwsArgumentError);
     expect(() => Field('1a'), throwsArgumentError);
   });

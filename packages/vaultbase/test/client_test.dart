@@ -272,6 +272,44 @@ void main() {
       }
     });
 
+    test('a refresh that ends after a new sign-in leaves that session',
+        () async {
+      final store = signedIn(jwtExpiringIn(3600));
+      final newer = jwtExpiringIn(9000);
+      final c = client((req) {
+        store.save(StoredAuth(newer, record: {'id': 'u2'}));
+        return json({
+          'data': {'token': jwtExpiringIn(7200)}
+        });
+      }, store: store);
+      expect(await c.vb.refreshSession(), isFalse);
+      expect(store.token, newer);
+      expect(store.record, {'id': 'u2'});
+    });
+
+    test('a refresh that ends after a sign-out stores nothing', () async {
+      final store = signedIn(jwtExpiringIn(3600));
+      final c = client((req) {
+        store.clear();
+        return json({
+          'data': {'token': jwtExpiringIn(7200)}
+        });
+      }, store: store);
+      expect(await c.vb.refreshSession(), isFalse);
+      expect(store.current, isNull);
+    });
+
+    test('a refused refresh keeps a session signed in meanwhile', () async {
+      final store = signedIn(jwtExpiringIn(3600));
+      final newer = jwtExpiringIn(9000);
+      final c = client((req) {
+        store.save(StoredAuth(newer));
+        return json({'error': 'expired'}, status: 401);
+      }, store: store);
+      expect(await c.vb.refreshSession(), isFalse);
+      expect(store.token, newer);
+    });
+
     test('an offline refresh keeps the session', () async {
       final old = jwtExpiringIn(30);
       final store = signedIn(old);
@@ -435,6 +473,42 @@ void main() {
       expect(c.vb.etags.get('posts', 'r1'), isNull);
     });
 
+    test("a 412's ETag is not cached", () async {
+      final c = client((req) => req.method == 'GET'
+          ? json({
+              'data': {'id': 'r1'}
+            }, headers: {
+              'etag': '"v1"'
+            })
+          : json({'error': 'stale'}, status: 412, headers: {'etag': '"v2"'}));
+      final posts = c.vb.collection('posts');
+      await posts.get('r1');
+      await expectLater(
+          posts.update('r1', {'title': 'x'}),
+          throwsA(isA<PreconditionFailedException>()
+              .having((e) => e.currentEtag, 'currentEtag', '"v2"')));
+      await expectLater(posts.update('r1', {'title': 'x'}),
+          throwsA(isA<PreconditionFailedException>()));
+      expect(c.requests[2].headers['if-match'], '"v1"');
+      expect(c.vb.etags.get('posts', 'r1'), '"v1"');
+    });
+
+    test('the ETag cache keeps the latest 1000', () async {
+      final c = client((_) => json({'data': <String, Object?>{}}));
+      final etags = c.vb.etags;
+      for (var i = 0; i < 1001; i++) {
+        etags.set('posts', '$i', '"$i"');
+      }
+      expect(etags.get('posts', '0'), isNull);
+      expect(etags.get('posts', '1'), '"1"');
+      expect(etags.get('posts', '1000'), '"1000"');
+      // Setting again makes it the newest.
+      etags.set('posts', '1', '"1b"');
+      etags.set('posts', 'x', '"x"');
+      expect(etags.get('posts', '1'), '"1b"');
+      expect(etags.get('posts', '2'), isNull);
+    });
+
     test('typed collections decode with fromJson', () async {
       final c = client((_) => json({
             'data': {'id': 'r1', 'title': 'Hi'}
@@ -479,9 +553,10 @@ void main() {
       final c = client((_) => json({
             'data': [
               {
-                'status': 200,
+                'status': 201,
                 'body': {
-                  'data': {'id': 'n1'}
+                  'id': 'n1',
+                  'data': {'kind': 'json field'}
                 }
               },
               {'status': 204, 'body': null},
@@ -503,6 +578,8 @@ void main() {
         {'method': 'GET', 'url': '/api/v1/posts?perPage=5&skipTotal=1'},
       ]);
       expect(results.first.record?.id, 'n1');
+      expect(results.first.record?['data'], {'kind': 'json field'});
+      expect(results[1].record, isNull);
       expect(results[1].ok, isTrue);
     });
 
@@ -511,7 +588,10 @@ void main() {
       final batch = c.vb.batch()
         ..get('posts', 'p1', expand: 'author', exclude: 'body,meta')
         ..get('posts', 'p2')
-        ..list('posts', exclude: 'body');
+        ..list('posts',
+            exclude: 'body',
+            // ignore: deprecated_member_use_from_same_package
+            search: 'hello');
       await batch.run();
       final sent = jsonDecode(c.requests.single.body) as Map;
       final urls = [

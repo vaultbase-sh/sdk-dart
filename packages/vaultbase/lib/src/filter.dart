@@ -22,13 +22,15 @@ final _placeholder = RegExp(r'\{:([A-Za-z_][A-Za-z0-9_]*)\}');
 /// escaped for the server's filter grammar:
 ///
 /// * `String` quoted, with `\` and `"` escaped
-/// * `int`, `double` (finite), `BigInt` bare
+/// * `int`, `double` (finite), `BigInt` bare, `double` as a plain decimal
+///   (`1e21` is written out in full)
 /// * `bool` as `true` / `false`, `null` as `null`
 /// * `DateTime` as a quoted ISO 8601 UTC string
-/// * `Iterable` as `(a, b, c)`
 /// * [Field] as a bare field name
 ///
-/// Anything else, or a placeholder missing from [params], throws.
+/// Anything else, or a placeholder missing from [params], throws. So does an
+/// `Iterable`: the filter language has no list value, so join one comparison
+/// per value with `||` instead.
 String buildFilter(String expression,
     [Map<String, Object?> params = const {}]) {
   return expression.replaceAllMapped(_placeholder, (m) {
@@ -46,14 +48,36 @@ String _encode(Object? v) => switch (v) {
       bool b => b ? 'true' : 'false',
       int i => '$i',
       BigInt i => '$i',
-      double d when d.isFinite => '$d',
+      double d when d.isFinite => _decimal(d),
       double d => throw ArgumentError('filter: non-finite number ($d)'),
       DateTime d => _quote(_iso(d)),
       Field f => f.name,
-      Iterable<Object?> list => '(${list.map(_encode).join(', ')})',
+      Iterable<Object?> _ => throw ArgumentError(
+          "filter: lists can't be inserted (the filter language has no list "
+          'value); join one comparison per value with ||'),
       _ =>
         throw ArgumentError('filter: unsupported value type ${v.runtimeType}'),
     };
+
+/// [d] without an exponent: the server reads `-?\d+(\.\d+)?` only.
+String _decimal(double d) {
+  final s = '$d';
+  final e = s.indexOf('e');
+  if (e < 0) return s;
+  final neg = s.startsWith('-');
+  final mantissa = s.substring(neg ? 1 : 0, e);
+  final exp = int.parse(s.substring(e + 1));
+  final dot = mantissa.indexOf('.');
+  final whole = dot < 0 ? mantissa : mantissa.substring(0, dot);
+  final digits = whole + (dot < 0 ? '' : mantissa.substring(dot + 1));
+  final point = whole.length + exp;
+  final out = point <= 0
+      ? '0.${'0' * -point}$digits'
+      : point >= digits.length
+          ? digits + '0' * (point - digits.length)
+          : '${digits.substring(0, point)}.${digits.substring(point)}';
+  return neg ? '-$out' : out;
+}
 
 String _quote(String s) =>
     '"${s.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';

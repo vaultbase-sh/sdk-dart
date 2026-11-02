@@ -27,7 +27,8 @@ class RealtimeEvent {
 
 /// The realtime connection's state.
 enum RealtimeState {
-  /// No subscriptions, so no connection.
+  /// No subscriptions, so no connection; or the server refused this app's
+  /// origin, and it doesn't reconnect.
   idle,
   connecting,
   open,
@@ -47,7 +48,9 @@ class RealtimeSubscription {
   final _Sub _sub;
 
   /// Completes when the server has confirmed the subscription; events
-  /// from before then may be missed.
+  /// from before then may be missed. Also completes, without error, when the
+  /// subscription is cancelled, the client closed, or the server refused
+  /// this app's origin first, so awaiting it never hangs.
   Future<void> get ready => _sub.ready.future;
 
   void cancel() => _realtime._unsubscribe(_sub);
@@ -65,6 +68,10 @@ class _Sub {
   final void Function(Map<String, dynamic>)? onMessage;
   final ready = Completer<void>();
 
+  void settle() {
+    if (!ready.isCompleted) ready.complete();
+  }
+
   List<String> get topics =>
       ids == null ? [collection] : [for (final id in ids!) '$collection/$id'];
 }
@@ -73,7 +80,8 @@ class _Sub {
 /// by every subscription of a client. It connects on the first subscription,
 /// sends the session's token (and a new one after each refresh),
 /// reconnects with backoff and subscribes again, and closes after the last
-/// subscription is cancelled.
+/// subscription is cancelled. A server that refuses this app's origin
+/// (`origin_not_allowed`) is not retried until the client is created again.
 class Realtime {
   Realtime(this._vb);
 
@@ -82,6 +90,11 @@ class Realtime {
   static const _backoff = [250, 500, 1000, 2000, 5000, 10000];
   static const _heartbeat = Duration(seconds: 30);
   static const _connectTimeout = Duration(seconds: 5);
+
+  /// A connection must stay up this long before the backoff starts over: a
+  /// server that accepts and then closes at once (connection cap,
+  /// maintenance) must not be retried at the shortest delay forever.
+  static const _stableAfter = Duration(seconds: 5);
 
   final _subs = <_Sub>[];
   final _topicRefs = <String, int>{};
@@ -95,9 +108,14 @@ class Realtime {
   Timer? _ping;
   Timer? _retry;
   Timer? _openTimer;
+  Timer? _stable;
   Completer<bool>? _opening;
   int _attempt = 0;
   String? _sentToken;
+
+  /// The server refused this origin; it won't be allowed until the app
+  /// restarts, so don't reconnect.
+  bool _refused = false;
 
   /// Bumped on every disconnect, so callbacks of an old connection can tell
   /// they are stale.
@@ -131,7 +149,9 @@ class Realtime {
       if (n == 1) added.add(t);
     }
     _watchAuth();
-    if (_state == RealtimeState.open) {
+    if (_refused) {
+      sub.settle();
+    } else if (_state == RealtimeState.open) {
       if (added.isNotEmpty) _send({'type': 'subscribe', 'topics': added});
       // Every topic was already held: nothing to confirm.
       if (added.isEmpty) sub.ready.complete();
@@ -168,6 +188,9 @@ class Realtime {
 
   /// Cancels every subscription and closes the connection.
   void close() {
+    for (final s in _subs) {
+      s.settle();
+    }
     _subs.clear();
     _topicRefs.clear();
     _authWatch?.cancel();
@@ -178,6 +201,7 @@ class Realtime {
 
   void _unsubscribe(_Sub sub) {
     if (!_subs.remove(sub)) return;
+    sub.settle();
     // Another subscription may hold the same topic; the server only hears
     // about the ones nobody holds any more.
     final released = <String>[];
@@ -214,7 +238,7 @@ class Realtime {
   }
 
   Future<void> _connect() async {
-    if (_subs.isEmpty) return;
+    if (_subs.isEmpty || _refused) return;
     final gen = ++_generation;
     _setState(
         _attempt == 0 ? RealtimeState.connecting : RealtimeState.reconnecting);
@@ -250,7 +274,7 @@ class Realtime {
       return;
     }
     _channel = channel;
-    _attempt = 0;
+    _stable = Timer(_stableAfter, () => _attempt = 0);
     _messages = channel.stream.listen(
       (m) => _onMessage(m),
       onDone: () => _onDropped(gen),
@@ -277,6 +301,13 @@ class Realtime {
 
   void _scheduleReconnect() {
     if (_subs.isEmpty || _state == RealtimeState.paused) return;
+    if (_refused) {
+      for (final s in _subs) {
+        s.settle();
+      }
+      _setState(RealtimeState.idle);
+      return;
+    }
     final base = _backoff[min(_attempt, _backoff.length - 1)];
     final delay = (base * (0.8 + _random.nextDouble() * 0.4)).round();
     _attempt++;
@@ -291,6 +322,8 @@ class Realtime {
     _retry = null;
     _openTimer?.cancel();
     _openTimer = null;
+    _stable?.cancel();
+    _stable = null;
     final opening = _opening;
     if (opening != null && !opening.isCompleted) opening.complete(false);
     _opening = null;
@@ -336,6 +369,9 @@ class Realtime {
         }
       case 'create' || 'update' || 'delete':
         _deliver(m);
+      case 'error' when m['reason'] == 'origin_not_allowed':
+        // The socket closes next; the drop then doesn't reconnect.
+        _refused = true;
       case 'connected' || 'unsubscribed' || 'subs' || 'pong' || 'error':
         break;
       default:

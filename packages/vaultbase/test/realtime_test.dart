@@ -21,13 +21,21 @@ class FakeRealtimeServer {
         return;
       }
       final ws = await WebSocketTransformer.upgrade(req);
-      sockets.add(ws);
+      opened++;
       connections.add(ws);
+      final refusal = refuse;
+      if (refusal != null) {
+        ws.add(jsonEncode(refusal));
+        await ws.close();
+        return;
+      }
+      sockets.add(ws);
       ws.add(jsonEncode({'type': 'connected'}));
       ws.listen((raw) {
         final m = jsonDecode(raw as String) as Map<String, dynamic>;
         received.add(m);
-        if (m['type'] == 'subscribe' || m['type'] == 'unsubscribe') {
+        if (confirm &&
+            (m['type'] == 'subscribe' || m['type'] == 'unsubscribe')) {
           ws.add(jsonEncode({'type': '${m['type']}d', 'topics': m['topics']}));
         }
       });
@@ -41,6 +49,15 @@ class FakeRealtimeServer {
   final sockets = <WebSocket>[];
   final connections = StreamController<WebSocket>.broadcast();
   final received = <Map<String, dynamic>>[];
+
+  /// Connections accepted so far.
+  var opened = 0;
+
+  /// When set, each connection gets this message and is closed at once.
+  Map<String, Object?>? refuse;
+
+  /// Whether subscribe and unsubscribe are answered.
+  var confirm = true;
 
   String get baseUrl => 'http://127.0.0.1:${_server.port}';
 
@@ -164,6 +181,34 @@ void main() {
           RealtimeState.reconnecting,
           RealtimeState.open
         ]));
+  });
+
+  test('a server that closes at once is retried with growing delays', () async {
+    server.refuse = {'type': 'error', 'reason': 'too_many_connections'};
+    vb.collection('posts').subscribe((_) {});
+    await Future<void>.delayed(const Duration(seconds: 2));
+    // 250, 500, 1000 ms apart; without the backoff, ~250 ms apart.
+    expect(server.opened, inInclusiveRange(2, 5));
+  });
+
+  test('a refused origin is not retried', () async {
+    server.refuse = {'type': 'error', 'reason': 'origin_not_allowed'};
+    final sub = vb.collection('posts').subscribe((_) {});
+    await sub.ready.timeout(const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(seconds: 1));
+    expect(server.opened, 1);
+    expect(vb.realtime.state, RealtimeState.idle);
+  });
+
+  test('ready completes on cancel and on close', () async {
+    server.confirm = false;
+    final a = vb.collection('posts').subscribe((_) {});
+    final b = vb.collection('other').subscribe((_) {});
+    await server.next('subscribe');
+    a.cancel();
+    await a.ready.timeout(const Duration(seconds: 1));
+    vb.realtime.close();
+    await b.ready.timeout(const Duration(seconds: 1));
   });
 
   test('a new token is sent on the open connection', () async {

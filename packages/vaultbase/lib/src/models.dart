@@ -142,11 +142,10 @@ class BatchResult {
 
   bool get ok => status >= 200 && status < 300;
 
-  /// The body as a record, for create, update and get operations.
+  /// The body as a record, for create, update and get operations (their
+  /// bodies are the bare record).
   RecordModel? get record {
     final b = body;
-    if (b is! Map) return null;
-    final inner = b['data'];
-    return RecordModel((inner is Map ? inner : b).cast<String, dynamic>());
+    return b is Map ? RecordModel(b.cast<String, dynamic>()) : null;
   }
 }
