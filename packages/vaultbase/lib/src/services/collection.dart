@@ -20,7 +20,10 @@ class Collection<T> {
   /// [exclude] leaves fields out, after [fields]; `id` is always returned
   /// (server 0.31.0 or later).
   /// With [skipTotal] the server doesn't count, and the totals are -1.
+  /// [params] fills a view's parameters (`:name` in its query; server
+  /// 0.35.0 or later).
   Future<ListResult<T>> list({
+    Map<String, Object?>? params,
     int? page,
     int? perPage,
     String? filter,
@@ -43,7 +46,8 @@ class Collection<T> {
             fields: fields,
             exclude: exclude,
             search: search,
-            skipTotal: skipTotal),
+            skipTotal: skipTotal,
+            params: params),
         cancelToken: cancelToken,
         requestKey: requestKey);
     return ListResult.fromJson((data as Map).cast<String, dynamic>(), _decode);
@@ -51,6 +55,7 @@ class Collection<T> {
 
   /// Every record matching the filter, a page at a time.
   Stream<T> iterate({
+    Map<String, Object?>? params,
     int perPage = 100,
     String? filter,
     String? sort,
@@ -73,6 +78,7 @@ class Collection<T> {
           exclude: exclude,
           search: search,
           skipTotal: skipTotal,
+          params: params,
           cancelToken: cancelToken);
       for (final item in res.items) {
         yield item;
@@ -89,13 +95,19 @@ class Collection<T> {
 
   /// One record. Its ETag is kept for [update] and [delete].
   Future<T> get(String id,
-      {String? expand,
+      {Map<String, Object?>? params,
+      String? expand,
       String? fields,
       String? exclude,
       CancelToken? cancelToken,
       String? requestKey}) async {
     final data = await _vb.request(_recordPath(id),
-        query: {'expand': expand, 'fields': fields, 'exclude': exclude},
+        query: {
+          ...viewParamsQuery(params),
+          'expand': expand,
+          'fields': fields,
+          'exclude': exclude,
+        },
         cancelToken: cancelToken,
         requestKey: requestKey);
     return _decode((data as Map).cast<String, dynamic>());
@@ -141,6 +153,7 @@ class Collection<T> {
   /// groupBy: ['status'])`.
   Future<List<Map<String, dynamic>>> aggregate({
     required List<String> agg,
+    Map<String, Object?>? params,
     List<String>? groupBy,
     String? filter,
     String? search,
@@ -151,6 +164,7 @@ class Collection<T> {
   }) async {
     final data = await _vb.request('$_path/_aggregate',
         query: {
+          ...viewParamsQuery(params),
           'agg': agg.join(','),
           'groupBy': groupBy?.join(','),
           'filter': filter,
@@ -193,8 +207,10 @@ Map<String, Object?> listQuery({
   String? exclude,
   String? search,
   bool skipTotal = false,
+  Map<String, Object?>? params,
 }) =>
     {
+      ...viewParamsQuery(params),
       'page': page,
       'perPage': perPage,
       'filter': filter,
@@ -204,4 +220,14 @@ Map<String, Object?> listQuery({
       'exclude': exclude,
       'search': search,
       'skipTotal': skipTotal ? '1' : null,
+    };
+
+/// `params[name]` keys for a view's parameters: a [DateTime] as UTC ISO
+/// 8601, the rest as text; null values are left out.
+Map<String, Object?> viewParamsQuery(Map<String, Object?>? params) => {
+      for (final e in (params ?? const <String, Object?>{}).entries)
+        if (e.value != null)
+          'params[${e.key}]': e.value is DateTime
+              ? (e.value as DateTime).toUtc().toIso8601String()
+              : '${e.value}',
     };

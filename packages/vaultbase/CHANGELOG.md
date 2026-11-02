@@ -1,5 +1,11 @@
 ## Unreleased
 
+- `params:` on `list`, `iterate`, `get` and `aggregate` fills a view
+  collection's parameters (`:name` in its query), sent as `params[name]`; a
+  `DateTime` as UTC ISO 8601. `dart run vaultbase:types` emits a
+  `<View>Params` class per view with parameters (required ones `required`;
+  the one from the signed-in user left out): `list(params:
+  RevenueParams(status: 'paid').toMap())`.
 - `MaintenanceException`: a 503 from a server in maintenance mode, with
   its `level` (`full` or `readOnly`) and, when the admin set a time,
   `until` and `retryAfter`. `VaultbaseException` is sealed, so an

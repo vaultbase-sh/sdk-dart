@@ -29,6 +29,41 @@ MemoryAuthStore signedIn(String token) =>
 
 void main() {
   group('requests', () {
+    test('view parameters go as params[name] on list, get and aggregate',
+        () async {
+      final c = client((req) => req.url.path.endsWith('_aggregate')
+          ? json({'data': <Object?>[]})
+          : req.url.pathSegments.length > 3
+              ? json({
+                  'data': {'id': 'u1'}
+                })
+              : json({
+                  'data': <Object?>[],
+                  'page': 1,
+                  'perPage': 30,
+                  'totalItems': 0,
+                  'totalPages': 0
+                }));
+      final col = c.vb.collection('revenue');
+      await col.list(params: {
+        'since': DateTime.utc(2026, 10, 1),
+        'status': 'paid',
+        'min': 5,
+        'paid': true,
+        'skip': null
+      });
+      await col.get('u1', params: {'status': 'void'});
+      await col.aggregate(agg: ['count'], params: {'status': 'paid'});
+      final q = c.requests[0].url.queryParameters;
+      expect(q['params[since]'], '2026-10-01T00:00:00.000Z');
+      expect(q['params[status]'], 'paid');
+      expect(q['params[min]'], '5');
+      expect(q['params[paid]'], 'true');
+      expect(q.containsKey('params[skip]'), isFalse);
+      expect(c.requests[1].url.queryParameters, {'params[status]': 'void'});
+      expect(c.requests[2].url.queryParameters['params[status]'], 'paid');
+    });
+
     test('strip the trailing slash, skip null query values', () {
       final vb = Vaultbase('https://vb.test///');
       expect(vb.baseUrl, 'https://vb.test');

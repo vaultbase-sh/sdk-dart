@@ -54,6 +54,34 @@ void main() {
     expect(out, isNot(contains(RegExp(r'get verified\b'))));
   });
 
+  test('a view with parameters gets a params class', () {
+    final out = generateDart(snapshotCollections({
+      'collections': [
+        {
+          'name': 'revenue',
+          'type': 'view',
+          'fields': '[{"name":"total","type":"number"}]',
+          'view_params':
+              '[{"name":"since","type":"date","default":0},{"name":"status","type":"text","required":true},{"name":"min_total","type":"number"},{"name":"paid","type":"bool"},{"name":"me","type":"text","from":"auth.id"}]',
+        },
+      ],
+    }));
+    expect(out, contains('class RevenueParams {'));
+    expect(
+        out,
+        contains(
+            'const RevenueParams({this.since, required this.status, this.minTotal, this.paid});'));
+    expect(out, contains('final Object? since;'));
+    expect(out, contains('final String status;'));
+    expect(out, contains('final num? minTotal;'));
+    expect(out, contains('final bool? paid;'));
+    expect(out, isNot(contains(' me')));
+    expect(
+        out,
+        contains(
+            "Map<String, Object?> toMap() => {if (since != null) 'since': since, 'status': status, if (minTotal != null) 'min_total': minTotal, if (paid != null) 'paid': paid};"));
+  });
+
   test('views and singletons have no create class; singletons use singletonOf',
       () {
     expect(out, contains('class PostStatsRecord'));

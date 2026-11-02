@@ -51,7 +51,7 @@ String generateDart(List<Map<String, dynamic>> collections,
     if (name is! String || !_collectionName.hasMatch(name)) continue;
     final base = _unique(_pascal(name), classNames);
     bases[col] = base;
-    typeNames.addAll(['${base}Record', '${base}Create']);
+    typeNames.addAll(['${base}Record', '${base}Create', '${base}Params']);
   }
 
   for (final col in collections) {
@@ -87,6 +87,13 @@ String generateDart(List<Map<String, dynamic>> collections,
           ],
           names,
           accessor));
+    }
+
+    if (type == 'view') {
+      final params = _viewParams(col['view_params']);
+      if (params.isNotEmpty) {
+        classes.add(_emitParams('${base}Params', name, params, accessor));
+      }
     }
 
     final quoted = _dartString(name);
@@ -310,6 +317,75 @@ String _emitCreate(String className, String collection, String type,
     for (final m in members) ...['', '  $m'],
     '',
     '  Map<String, dynamic> toJson() => {${json.join(', ')}};',
+    '}',
+  ].join('\n');
+}
+
+/// A view's parameters a client sets (`view_params`: a list, or JSON text
+/// from the collections API); the one from the signed-in user isn't one.
+List<({String name, String type, bool required})> _viewParams(Object? raw) {
+  Object? list = raw;
+  if (raw is String) {
+    try {
+      list = jsonDecode(raw);
+    } catch (_) {
+      return const [];
+    }
+  }
+  if (list is! List) return const [];
+  return [
+    for (final p in list)
+      if (p is Map &&
+          p['name'] is String &&
+          _fieldName.hasMatch(p['name'] as String) &&
+          p['from'] == null)
+        (
+          name: p['name'] as String,
+          type: p['type'] is String ? p['type'] as String : 'text',
+          required: p['required'] == true,
+        ),
+  ];
+}
+
+/// A view's parameters as a class: `list(params: XParams(...).toMap())`.
+String _emitParams(String className, String collection,
+    List<({String name, String type, bool required})> params, String accessor) {
+  final args = <String>[];
+  final members = <String>[];
+  final map = <String>[];
+  final used = <String>{
+    'toMap',
+    'toString',
+    'hashCode',
+    'runtimeType',
+    'noSuchMethod'
+  };
+  for (final p in params) {
+    var n = _safeIdent(_camel(p.name));
+    while (used.contains(n)) {
+      n = '${n}_';
+    }
+    used.add(n);
+    // A date takes a DateTime (sent as ISO 8601) or Unix seconds.
+    final t = switch (p.type) {
+      'number' => 'num',
+      'bool' => 'bool',
+      'date' => 'Object',
+      _ => 'String',
+    };
+    args.add(p.required ? 'required this.$n' : 'this.$n');
+    members.add('final ${p.required ? t : '$t?'} $n;');
+    final key = _dartString(p.name);
+    map.add(p.required ? '$key: $n' : 'if ($n != null) $key: $n');
+  }
+  return [
+    '/// Parameters of the `$collection` view:',
+    '/// `collections.$accessor.list(params: $className(...).toMap())`.',
+    'class $className {',
+    '  const $className({${args.join(', ')}});',
+    for (final m in members) ...['', '  $m'],
+    '',
+    '  Map<String, Object?> toMap() => {${map.join(', ')}};',
     '}',
   ].join('\n');
 }
