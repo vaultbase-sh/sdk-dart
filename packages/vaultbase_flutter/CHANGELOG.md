@@ -1,3 +1,8 @@
+## 0.1.5
+
+- Works with `vaultbase` 0.6.0 (client fixes from a full review: refresh
+  races, realtime backoff and refused origins, ETags, filter values).
+
 ## 0.1.4
 
 - Works with `vaultbase` 0.5.0 (`params:` for view collections,

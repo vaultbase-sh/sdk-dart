@@ -1,4 +1,4 @@
-## Unreleased
+## 0.6.0
 
 - `buildFilter` throws on a list (the filter language has no list value;
   the server answered 400) and writes doubles as plain decimals
