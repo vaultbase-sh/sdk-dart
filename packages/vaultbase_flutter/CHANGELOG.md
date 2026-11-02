@@ -1,3 +1,8 @@
+## 0.1.4
+
+- Works with `vaultbase` 0.5.0 (`params:` for view collections,
+  `MaintenanceException`).
+
 ## 0.1.3
 
 - Works with `vaultbase` 0.4.0 (typed group fields from

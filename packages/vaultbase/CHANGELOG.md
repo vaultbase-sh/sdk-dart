@@ -1,4 +1,4 @@
-## Unreleased
+## 0.5.0
 
 - `params:` on `list`, `iterate`, `get` and `aggregate` fills a view
   collection's parameters (`:name` in its query), sent as `params[name]`; a
