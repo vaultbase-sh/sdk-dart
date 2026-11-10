@@ -18,6 +18,7 @@ import 'services/collection.dart';
 import 'services/custom.dart';
 import 'services/files.dart';
 import 'services/singleton.dart';
+import 'warning.dart';
 
 /// Refresh the session this many seconds before its token expires.
 const _refreshLeadSeconds = 60;
@@ -44,6 +45,8 @@ class Vaultbase {
     this.autoCancel = false,
     this.timeout,
     Map<String, String> headers = const {},
+    this.onWarning,
+    this.printWarnings = PrintWarnings.debug,
   })  : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), ''),
         authStore = authStore ?? MemoryAuthStore(),
         _http = httpClient ?? http.Client(),
@@ -62,6 +65,15 @@ class Vaultbase {
 
   /// Time limit for each request; none when null.
   final Duration? timeout;
+
+  /// Called with each warning the server sends (server 0.42+): a
+  /// `Vaultbase-Warning` response header (one call per message) or a
+  /// realtime `warning` frame. Called whatever [printWarnings] says.
+  final void Function(VaultbaseWarning warning)? onWarning;
+
+  /// When server warnings are printed as `[vaultbase] ...`. By default only
+  /// with assertions on (debug builds, `dart run`, tests).
+  final PrintWarnings printWarnings;
 
   final http.Client _http;
   final bool _ownsHttp;
@@ -147,6 +159,22 @@ class Vaultbase {
           requestKey: requestKey,
           autoCancel: autoCancel,
           skipAuth: skipAuth);
+
+  /// Hands a server warning to [onWarning] and, per [printWarnings], prints
+  /// it. Used by the request pipeline and [realtime]; not for direct use.
+  void emitWarning(VaultbaseWarning warning) {
+    try {
+      onWarning?.call(warning);
+    } on Object {
+      // The app's callback must not break the request.
+    }
+    var show = printWarnings == PrintWarnings.always;
+    if (printWarnings == PrintWarnings.debug) {
+      assert(show = true);
+    }
+    // ignore: avoid_print
+    if (show) print('[vaultbase] $warning');
+  }
 
   /// Cancels every request that has a request key.
   void cancelAll() => _cancels.cancelAll();
@@ -276,6 +304,16 @@ class Vaultbase {
     if (cancel?.isCancelled ?? false) throw const CancelledException();
     if (timedOut) throw const NetworkException('Request timed out');
 
+    final warning = res.headers['vaultbase-warning'];
+    if (warning != null) {
+      for (final m in warning.split(' | ')) {
+        final message = m.trim();
+        if (message.isEmpty) continue;
+        emitWarning(VaultbaseWarning(WarningSource.http, message,
+            method: method, path: uri.path));
+      }
+    }
+
     final data = _decode(res);
     final status = res.statusCode;
     // Only a success's: a 412 carries the current ETag, and caching it would
@@ -328,17 +366,70 @@ class Vaultbase {
         throw AuthException(AuthFailure.expired, message ?? 'Unauthorized',
             status: status, code: code, body: data);
       case 403:
-        throw AuthException(AuthFailure.forbidden, message ?? 'Forbidden',
-            status: status, code: code, body: data);
-      case 422:
+        final op = data is Map ? data['operation'] : null;
+        final operation =
+            op is String ? AuthOperation.values.asNameMap()[op] : null;
+        final serverReason = data is Map && data['reason'] is String
+            ? data['reason'] as String
+            : null;
+        AuthException refused(AuthFailure reason) =>
+            AuthException(reason, message ?? 'Forbidden',
+                operation: operation,
+                serverReason: serverReason,
+                status: status,
+                code: code,
+                body: data);
+        // The server didn't accept the token and ran the request as
+        // anonymous: the session is over unless a refresh saves it.
+        if (serverReason == 'token_invalid' &&
+            !skipAuth &&
+            sentToken != null &&
+            sentToken.isNotEmpty) {
+          // Refused again with a token that was just refreshed: like a 401
+          // then, this endpoint refuses the caller. Keep the session.
+          if (retried) throw refused(AuthFailure.forbidden);
+          // Signed out or in again while this ran: leave that session alone.
+          if (authStore.token != sentToken) {
+            throw refused(AuthFailure.expired);
+          }
+          if (await refreshSession()) {
+            return request(path,
+                method: method,
+                body: body,
+                headers: headers,
+                query: query,
+                cancelToken: cancelToken,
+                requestKey: requestKey,
+                autoCancel: autoCancel,
+                retried: true,
+                multipart: multipart,
+                onProgress: onProgress,
+                onResponse: onResponse);
+          }
+          if (authStore.token == sentToken) authStore.clear();
+          throw refused(AuthFailure.expired);
+        }
+        throw refused(switch (serverReason) {
+          'not_signed_in' => AuthFailure.notSignedIn,
+          'token_invalid' => AuthFailure.expired,
+          _ => AuthFailure.forbidden,
+        });
+      case 400 || 422:
         final details = data is Map && data['details'] is Map
             ? {
                 for (final e in (data['details'] as Map).entries)
                   '${e.key}': '${e.value}'
               }
             : const <String, String>{};
-        throw ValidationException(message ?? 'Validation failed',
-            details: details, status: status, code: code, body: data);
+        throw ValidationException(
+            message ?? (status == 400 ? 'Bad request' : 'Validation failed'),
+            details: details,
+            status: status,
+            code: code,
+            body: data);
+      case 404:
+        throw NotFoundException(message ?? 'Not found',
+            status: status, code: code, body: data);
       case 409:
         throw ConflictException(message ?? 'Conflict',
             status: status, code: code, body: data);
@@ -409,12 +500,23 @@ class Vaultbase {
     if (token == null || token.isEmpty) return;
     final left = secondsUntilExpiry(token);
     if (left == null || left > _refreshLeadSeconds) return;
+    final bool ok;
     try {
-      await refreshSession();
+      ok = await refreshSession();
     } on VaultbaseException {
       // Offline or the server is down: send the request with the current
       // token; a 401 retries the refresh.
+      return;
     }
+    if (ok) return;
+    // Signed in again while the refresh ran: send with that session.
+    final now = authStore.token;
+    if (now != null && now.isNotEmpty && now != token) return;
+    // The server refused the refresh: the session is over. Don't send the
+    // request without it, which would come back as a confusing 403.
+    if (now == token) authStore.clear();
+    throw const AuthException(
+        AuthFailure.expired, 'Session expired; sign in again');
   }
 
   static final _recordPath = RegExp(r'^/api/(?:v\d+/)?([^/]+)/([^/]+)$');

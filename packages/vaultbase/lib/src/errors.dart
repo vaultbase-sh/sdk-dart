@@ -28,26 +28,52 @@ final class NetworkException extends VaultbaseException {
 
 /// Why a request was refused for its credentials.
 enum AuthFailure {
-  /// The session expired and could not be refreshed; it was cleared.
+  /// The session ended: its token expired and could not be refreshed, or
+  /// the server refused it (a 403 with `token_invalid`). It was cleared;
+  /// show sign-in.
   expired,
 
   /// A request sent without the session was refused (bad credentials).
   invalid,
 
-  /// The session is valid but not allowed to do this (403, or a 401 after a
-  /// successful refresh). The session is kept.
+  /// The caller is not allowed to do this: a collection rule or an
+  /// admin-only endpoint refused it (403), or a 401 came after a successful
+  /// refresh. The session is kept.
   forbidden,
+
+  /// The request had no session and the collection's rule needs one (a 403
+  /// with `not_signed_in`, server 0.42+). Show sign-in.
+  notSignedIn,
 }
+
+/// The operation a 403 refused, as the server names it (server 0.42+).
+enum AuthOperation { list, view, create, update, delete }
 
 /// 401 / 403.
+///
+/// On server 0.42+ a 403 from the records and file APIs also says what was
+/// refused ([operation]) and why ([serverReason]). Both are null on older
+/// servers and on other endpoints.
 final class AuthException extends VaultbaseException {
   const AuthException(this.reason, super.message,
-      {super.status, super.code, super.body});
+      {this.operation,
+      this.serverReason,
+      super.status,
+      super.code,
+      super.body});
 
   final AuthFailure reason;
+
+  /// The refused operation, from a 403 body.
+  final AuthOperation? operation;
+
+  /// The server's own reason, from a 403 body: `not_signed_in`,
+  /// `rule_denied`, `admin_only` or `token_invalid`.
+  final String? serverReason;
 }
 
-/// 422: the body failed validation. [details] maps field names to messages.
+/// 422, or 400 (a bad filter, sort or body). [details] maps field names to
+/// messages when the server sends them.
 final class ValidationException extends VaultbaseException {
   const ValidationException(super.message,
       {this.details = const {}, super.status, super.code, super.body});
@@ -111,9 +137,16 @@ final class MaintenanceException extends VaultbaseException {
   final Duration? retryAfter;
 }
 
-/// Any other non-2xx response.
-final class ServerException extends VaultbaseException {
+/// Any other non-2xx response; [NotFoundException] for a 404.
+class ServerException extends VaultbaseException {
   const ServerException(super.message, {super.status, super.code, super.body});
+}
+
+/// 404: the record, collection or route doesn't exist, or the caller can't
+/// see it. A [ServerException], so `on ServerException` still catches it.
+final class NotFoundException extends ServerException {
+  const NotFoundException(super.message,
+      {super.status, super.code, super.body});
 }
 
 /// The request was cancelled: by its [CancelToken], or by a newer request

@@ -6,6 +6,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'client.dart';
 import 'models.dart';
+import 'warning.dart';
 
 /// What happened to a record.
 enum RealtimeAction { create, update, delete }
@@ -369,6 +370,8 @@ class Realtime {
         }
       case 'create' || 'update' || 'delete':
         _deliver(m);
+      case 'warning':
+        _onWarning(m);
       case 'error' when m['reason'] == 'origin_not_allowed':
         // The socket closes next; the drop then doesn't reconnect.
         _refused = true;
@@ -380,6 +383,22 @@ class Realtime {
           s.onMessage?.call(message);
         }
     }
+  }
+
+  /// A `warning` frame (server 0.42+): a subscription to a collection that
+  /// doesn't exist, which is acknowledged but never gets an event.
+  void _onWarning(Map<dynamic, dynamic> m) {
+    final reason = m['reason'] is String ? m['reason'] as String : null;
+    final topic = m['topic'] is String ? m['topic'] as String : null;
+    // Server topics (`__flags`) aren't collections; 0.42.0 warns about them
+    // anyway.
+    if (topic != null && topic.startsWith('__')) return;
+    final text = m['message'];
+    final message = text is String && text.isNotEmpty
+        ? text
+        : '${reason ?? 'warning'}${topic == null ? '' : " (topic '$topic')"}';
+    _vb.emitWarning(VaultbaseWarning(WarningSource.realtime, message,
+        reason: reason, topic: topic));
   }
 
   /// The server sends each event once per connection, however many of its

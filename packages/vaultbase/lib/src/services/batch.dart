@@ -47,7 +47,9 @@ class Batch {
   }
 
   /// The options as on `Collection.list`, except `search`: the server's
-  /// batch list ignores it, so it is deprecated here and not sent.
+  /// batch list ignores it, so it is deprecated here and not sent. A batch
+  /// that also writes can't list (the server answers 422); send lists in a
+  /// batch of reads.
   Batch list(
     String collection, {
     int? page,

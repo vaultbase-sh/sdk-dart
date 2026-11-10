@@ -44,6 +44,14 @@ void main() {
       ],
     });
     await create({
+      'name': 'notes',
+      'type': 'base',
+      'create_rule': '@request.auth.id != ""',
+      'fields': [
+        {'name': 'body', 'type': 'text'},
+      ],
+    });
+    await create({
       'name': 'members',
       'type': 'auth',
       'create_rule': null,
@@ -75,7 +83,7 @@ void main() {
       await expectLater(
           posts.get(created.id),
           throwsA(
-              isA<ServerException>().having((e) => e.status, 'status', 404)));
+              isA<NotFoundException>().having((e) => e.status, 'status', 404)));
     }, skip: skip);
 
     test('validation errors carry field details', () async {
@@ -207,14 +215,25 @@ void main() {
       ..create('posts', {'title': 'from batch', 'status': 'batch'})
       ..update('posts', keep.id, {'status': 'batch'})
       ..delete('posts', drop.id)
-      ..get('posts', keep.id)
-      ..list('posts', filter: 'status = "batch"', skipTotal: true);
+      ..get('posts', keep.id);
     final results = await batch.run();
     expect(results.map((r) => r.ok), everyElement(isTrue));
     expect(results[0].record?.getString('title'), 'from batch');
     expect(results[3].record?.getString('status'), 'batch');
+    // Lists go in a batch of reads.
+    final reads = await (admin.batch()
+          ..get('posts', keep.id)
+          ..list('posts', filter: 'status = "batch"', skipTotal: true))
+        .run();
+    expect(reads.map((r) => r.ok), everyElement(isTrue));
+    await expectLater(
+        (admin.batch()
+              ..create('posts', {'title': 'x'})
+              ..list('posts'))
+            .run(),
+        throwsA(isA<ValidationException>()));
     await expectLater(admin.collection('posts').get(drop.id),
-        throwsA(isA<ServerException>()));
+        throwsA(isA<NotFoundException>()));
   }, skip: skip);
 
   group('session', () {
@@ -274,6 +293,52 @@ void main() {
               skipAuth: true),
           throwsA(isA<AuthException>()
               .having((e) => e.reason, 'reason', AuthFailure.invalid)));
+    }, skip: skip);
+  });
+
+  group('server 0.42', () {
+    test('an unknown sort field comes back as a warning', () async {
+      final warnings = <VaultbaseWarning>[];
+      final vb = Vaultbase(server.baseUrl,
+          authStore: MemoryAuthStore()..save(StoredAuth(server.adminToken)),
+          onWarning: warnings.add,
+          printWarnings: PrintWarnings.never);
+      addTearDown(vb.close);
+      await vb.collection('posts').list(sort: '-titel');
+      expect(warnings.map((w) => w.message), contains(contains('titel')));
+      expect(warnings.first.source, WarningSource.http);
+    }, skip: skip);
+
+    test('a 403 says not_signed_in and the operation', () async {
+      final anon = Vaultbase(server.baseUrl);
+      addTearDown(anon.close);
+      await expectLater(
+          anon.collection('notes').create({'body': 'x'}),
+          throwsA(isA<AuthException>()
+              .having((e) => e.reason, 'reason', AuthFailure.notSignedIn)
+              .having((e) => e.operation, 'operation', AuthOperation.create)
+              .having((e) => e.serverReason, 'serverReason', 'not_signed_in')));
+    }, skip: skip);
+
+    test('a token the server refuses ends the session', () async {
+      final store = MemoryAuthStore()..save(StoredAuth('not.a.token'));
+      final vb = Vaultbase(server.baseUrl, authStore: store);
+      addTearDown(vb.close);
+      await expectLater(
+          vb.collection('notes').create({'body': 'x'}),
+          throwsA(isA<AuthException>()
+              .having((e) => e.reason, 'reason', AuthFailure.expired)
+              .having((e) => e.serverReason, 'serverReason', 'token_invalid')));
+      expect(store.current, isNull);
+    }, skip: skip);
+
+    test('registering a taken email is a ConflictException', () async {
+      final members = Vaultbase(server.baseUrl).auth.collection('members');
+      await members.register('taken@sdk-dart.test', 'longpassword-123');
+      await expectLater(
+          members.register('taken@sdk-dart.test', 'longpassword-123'),
+          throwsA(
+              isA<ConflictException>().having((e) => e.status, 'status', 409)));
     }, skip: skip);
   });
 }

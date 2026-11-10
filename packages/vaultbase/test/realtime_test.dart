@@ -244,4 +244,40 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(vb.realtime.state, RealtimeState.idle);
   });
+
+  test('a warning frame calls onWarning and is not an event', () async {
+    final warnings = <VaultbaseWarning>[];
+    final warned = Vaultbase(server.baseUrl,
+        onWarning: warnings.add, printWarnings: PrintWarnings.never);
+    addTearDown(warned.close);
+    final events = <RealtimeEvent>[];
+    final flags = <Map<String, dynamic>>[];
+    final sub = warned.collection('postz').subscribe(events.add);
+    warned.realtime.subscribeTopic('__flags', flags.add);
+    await sub.ready;
+    server.push({
+      'type': 'warning',
+      'reason': 'unknown_collection',
+      'topic': '__flags',
+      'message': "No collection named '__flags'",
+    });
+    server.push({
+      'type': 'warning',
+      'reason': 'unknown_collection',
+      'topic': 'postz',
+      'message': "No collection named 'postz': this subscription will never "
+          'receive events.',
+    });
+    for (var i = 0; i < 100 && warnings.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(warnings, hasLength(1));
+    final w = warnings.single;
+    expect(w.source, WarningSource.realtime);
+    expect(w.reason, 'unknown_collection');
+    expect(w.topic, 'postz');
+    expect(w.message, startsWith("No collection named 'postz'"));
+    expect(events, isEmpty);
+    expect(flags, isEmpty);
+  });
 }

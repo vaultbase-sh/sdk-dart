@@ -161,8 +161,8 @@ void main() {
       // The nonce was spent by that attempt.
       await expectLater(
           members.signInWithIdToken('google', 'not.a.jwt', nonce: nonce),
-          throwsA(
-              isA<ServerException>().having((e) => e.status, 'status', 400)));
+          throwsA(isA<ValidationException>()
+              .having((e) => e.status, 'status', 400)));
       // Google's nonce is optional; the token is still checked.
       await expectLater(members.signInWithIdToken('google', 'not.a.jwt'),
           throwsA(isA<AuthException>()));

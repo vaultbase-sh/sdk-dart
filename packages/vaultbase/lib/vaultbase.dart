@@ -35,3 +35,4 @@ export 'src/services/files.dart'
     show FileMeta, FileToken, Files, ImageFormat, ThumbFit, UploadFile;
 export 'src/services/singleton.dart' show Singleton;
 export 'src/version.dart';
+export 'src/warning.dart';

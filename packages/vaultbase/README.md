@@ -43,7 +43,11 @@ Future<void> main() async {
   session's token kept current.
 - **Feature flags:** evaluated by the server, read synchronously, pushed when
   they change.
-- **Typed errors:** a sealed `VaultbaseException`, so a `switch` covers every case.
+- **Typed errors:** a sealed `VaultbaseException`, so a `switch` covers
+  every case. A 403 says which operation was refused and why.
+- **Server warnings:** a sort field or expand that doesn't exist, a
+  subscription to a missing collection; printed in debug builds and passed
+  to `onWarning`.
 - **Typed records:** `dart run vaultbase:types --schema=vaultbase-schema.json`
   generates a class per collection.
 
