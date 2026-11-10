@@ -1,3 +1,33 @@
+## 0.7.1
+
+For server 0.44, which answers 401 for a token it doesn't accept and 400
+for names that don't exist. No API change.
+
+- A 401 from the records, files and batch APIs carries
+  `AuthException.serverReason`: `token_invalid`, or `insufficient_scope`
+  for an API token without the scope. A `token_invalid` is handled as
+  every 401 was: one refresh and a retry; a refused refresh clears the
+  session and throws `AuthException(AuthFailure.expired)`; a 401 after a
+  successful refresh throws `AuthFailure.forbidden` and keeps the session.
+  Server 0.44 answers this way for public data too, where older servers
+  answered 200 as anonymous.
+- An API token (`vbat_...`) is no longer refreshed or cleared. The server
+  never refreshes one, so a refused request used to cost a refresh call and
+  then removed the token from the auth store, and a token within a minute
+  of expiry was removed before the request was sent. Now the request throws
+  `AuthException` with the server's message and the token stays:
+  `AuthFailure.forbidden` when it doesn't have the scope for the request
+  (a 401 with `reason: "insufficient_scope"`, server 0.44),
+  `AuthFailure.expired` when it expired or was revoked.
+  `auth.refresh()` returns false for one without a request.
+- A list with an unknown `sort`, `expand` or `fields` name, and a create or
+  update with a body key that isn't a field, throw `ValidationException`
+  on server 0.44, with `details` keyed by the query parameter or the body
+  key. Servers 0.42 and 0.43 sent these as `Vaultbase-Warning` headers,
+  which still reach `onWarning`; realtime warnings are unchanged. The
+  client sends no sort, expand, fields or body keys of its own, and
+  `dart run vaultbase:types` classes write only the collection's fields.
+
 ## 0.7.0
 
 For server 0.42: the reasons a 403 gives, the server's warnings, and error
