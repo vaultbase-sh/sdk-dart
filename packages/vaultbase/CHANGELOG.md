@@ -1,3 +1,39 @@
+## 0.7.0
+
+For server 0.42: the reasons a 403 gives, the server's warnings, and error
+classes for 400 and 404.
+
+- **Breaking:** `AuthFailure.notSignedIn`: a 403 whose rule needs a
+  signed-in caller and the request had no session (`reason:
+  "not_signed_in"`). An exhaustive `switch` over `AuthFailure` needs the new
+  case. Rules that refuse a signed-in caller and admin-only endpoints stay
+  `forbidden`.
+- A 403 with `reason: "token_invalid"` (the server didn't accept the token
+  and ran the request as anonymous) is handled like a 401: one refresh and
+  a retry; if the refresh is refused, the session is cleared and the
+  request throws `AuthException(AuthFailure.expired)`.
+- `AuthException.operation` (`AuthOperation.list`, `view`, `create`,
+  `update`, `delete`) and `AuthException.serverReason` (`not_signed_in`,
+  `rule_denied`, `admin_only`, `token_invalid`) from a 403 body; null on
+  older servers.
+- A token close to expiry whose refresh is refused throws
+  `AuthException(AuthFailure.expired)` instead of sending the request
+  without the session (it came back as a 403 that looked like a rule).
+- **Breaking:** a 400 (a bad filter, sort or body) is a
+  `ValidationException` with `status` 400; it was a `ServerException`.
+- `NotFoundException` for a 404. It extends `ServerException`, so
+  `on ServerException` and an exhaustive `switch` with a `ServerException`
+  case still cover it.
+- Server warnings: `Vaultbase(onWarning:)` is called with a
+  `VaultbaseWarning` for each message of a `Vaultbase-Warning` response
+  header (an unknown sort field, expand or body key) and for a realtime
+  `warning` frame (a subscription to a collection that doesn't exist).
+  `printWarnings` prints them as `[vaultbase] ...`: `debug` (the default,
+  only with assertions on, so not in release builds), `always` or `never`.
+- Registering an email that already has an account is a
+  `ConflictException` (server 0.42 answers 409).
+- `Batch.list` documents that a batch that writes can't list.
+
 ## 0.6.0
 
 - `buildFilter` throws on a list (the filter language has no list value;

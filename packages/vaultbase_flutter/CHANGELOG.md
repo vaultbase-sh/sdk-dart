@@ -1,3 +1,11 @@
+## 0.1.6
+
+- Works with `vaultbase` 0.7.0 (server 0.42: `AuthFailure.notSignedIn`,
+  `operation` and `serverReason` on 403s, `token_invalid` refreshes,
+  `NotFoundException`, server warnings through `onWarning`). The new
+  `AuthFailure.notSignedIn` breaks an exhaustive `switch` over
+  `AuthFailure`. Warnings print only in debug builds by default.
+
 ## 0.1.5
 
 - Works with `vaultbase` 0.6.0 (client fixes from a full review: refresh

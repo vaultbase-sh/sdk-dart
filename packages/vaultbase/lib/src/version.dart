@@ -1,5 +1,5 @@
 /// This package's version.
-const String sdkVersion = '0.6.0';
+const String sdkVersion = '0.7.0';
 
 /// The server versions this SDK is tested against.
 const String serverCompat = '>=0.27.0';
