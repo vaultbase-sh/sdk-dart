@@ -14,6 +14,15 @@ Map<String, dynamic>? decodeJwtPayload(String token) {
   }
 }
 
+/// True when [token] is an API token (`vbat_...`, audience `api`): a
+/// credential an admin minted, not a session. The server never refreshes
+/// one.
+bool isApiToken(String token) {
+  if (token.startsWith('vbat_')) return true;
+  final aud = decodeJwtPayload(token)?['aud'];
+  return aud == 'api' || (aud is List && aud.isNotEmpty && aud.first == 'api');
+}
+
 /// Seconds until [token] expires, or null when it has no `exp`.
 int? secondsUntilExpiry(String token, [DateTime? now]) {
   final exp = decodeJwtPayload(token)?['exp'];

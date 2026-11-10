@@ -29,16 +29,20 @@ final class NetworkException extends VaultbaseException {
 /// Why a request was refused for its credentials.
 enum AuthFailure {
   /// The session ended: its token expired and could not be refreshed, or
-  /// the server refused it (a 403 with `token_invalid`). It was cleared;
-  /// show sign-in.
+  /// the server refused it (a 401; servers 0.42 and 0.43 also answer 403
+  /// with `token_invalid`). It was cleared; show sign-in.
+  ///
+  /// Also an API token the server no longer accepts (expired or revoked).
+  /// That one is not cleared: replace it.
   expired,
 
   /// A request sent without the session was refused (bad credentials).
   invalid,
 
   /// The caller is not allowed to do this: a collection rule or an
-  /// admin-only endpoint refused it (403), or a 401 came after a successful
-  /// refresh. The session is kept.
+  /// admin-only endpoint refused it (403), a 401 came after a successful
+  /// refresh, or an API token doesn't have the scope for the request (a
+  /// 401 with `insufficient_scope`, server 0.44+). The session is kept.
   forbidden,
 
   /// The request had no session and the collection's rule needs one (a 403
@@ -53,7 +57,10 @@ enum AuthOperation { list, view, create, update, delete }
 ///
 /// On server 0.42+ a 403 from the records and file APIs also says what was
 /// refused ([operation]) and why ([serverReason]). Both are null on older
-/// servers and on other endpoints.
+/// servers and on other endpoints. On server 0.44+ a 401 from the records,
+/// files and batch APIs has a [serverReason] too: `token_invalid` for a
+/// token the server doesn't accept, `insufficient_scope` for an API token
+/// without the scope for the request.
 final class AuthException extends VaultbaseException {
   const AuthException(this.reason, super.message,
       {this.operation,
@@ -67,13 +74,20 @@ final class AuthException extends VaultbaseException {
   /// The refused operation, from a 403 body.
   final AuthOperation? operation;
 
-  /// The server's own reason, from a 403 body: `not_signed_in`,
-  /// `rule_denied`, `admin_only` or `token_invalid`.
+  /// The server's own reason: `not_signed_in`, `rule_denied` or
+  /// `admin_only` from a 403 body; `token_invalid` or `insufficient_scope`
+  /// from a 401 body (server 0.44+; `token_invalid` came on a 403 from
+  /// 0.42 and 0.43).
   final String? serverReason;
 }
 
 /// 422, or 400 (a bad filter, sort or body). [details] maps field names to
 /// messages when the server sends them.
+///
+/// Server 0.44+ answers 400 for a list with a `sort`, `expand` or `fields`
+/// name that doesn't exist and for a create or update with a body key that
+/// isn't a field; [details] is then keyed by the query parameter (`sort`)
+/// or the body key.
 final class ValidationException extends VaultbaseException {
   const ValidationException(super.message,
       {this.details = const {}, super.status, super.code, super.body});

@@ -44,14 +44,48 @@ Future<void> main() async {
 - **Feature flags:** evaluated by the server, read synchronously, pushed when
   they change.
 - **Typed errors:** a sealed `VaultbaseException`, so a `switch` covers
-  every case. A 403 says which operation was refused and why.
-- **Server warnings:** a sort field or expand that doesn't exist, a
-  subscription to a missing collection; printed in debug builds and passed
-  to `onWarning`.
+  every case. A 403 says which operation was refused and why; a
+  `ValidationException` names the fields, sort names or body keys the
+  server refused.
+- **Server warnings:** a subscription to a missing collection, and on
+  servers 0.42 and 0.43 a sort field, expand or body key that doesn't exist
+  (0.44 refuses those with a 400); printed in debug builds and passed to
+  `onWarning`.
 - **Typed records:** `dart run vaultbase:types --schema=vaultbase-schema.json`
   generates a class per collection.
 
 Needs Dart 3.6 and a Vaultbase server 0.27 or later.
+
+## Server 0.44
+
+Two things a server from 0.44 refuses that older ones let through:
+
+- **A token it doesn't accept is a 401**, on records, files and batch, even
+  for data anyone can read. The client refreshes the session once and
+  retries. If the refresh is refused, the session is cleared and the request
+  throws `AuthException` with `reason: AuthFailure.expired`: show sign-in,
+  or send the request again, now without the token.
+- **Names that don't exist are a 400.** A list with a `sort`, `expand` or
+  `fields` name that isn't a field, and a create or update with a body key
+  that isn't a field, throw `ValidationException`; `details` is keyed by the
+  query parameter (`sort`) or the body key. A record can still be saved
+  back as it was read (`update(id, {...record.toJson(), 'title': 'New'})`).
+  The client adds no keys of its own.
+
+## API tokens
+
+For a script or a server, an API token (`vbat_...`) goes in the auth store:
+
+```dart
+final vb = Vaultbase('https://api.example.com',
+    authStore: MemoryAuthStore()..save(StoredAuth(apiToken)));
+```
+
+It is not a session, so the client never refreshes or clears it. When the
+server refuses it, the request throws `AuthException` with the server's
+message: `AuthFailure.forbidden` when the token doesn't have the scope for
+the request (`serverReason: "insufficient_scope"`, server 0.44),
+`AuthFailure.expired` when it expired or was revoked (`"token_invalid"`).
 
 ## Documentation
 

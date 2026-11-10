@@ -55,7 +55,19 @@ void main() {
       'name': 'members',
       'type': 'auth',
       'create_rule': null,
-      'fields': <Object?>[],
+      'fields': <Object?>[
+        {'name': 'nickname', 'type': 'text'},
+      ],
+    });
+    // Anyone can read these.
+    await create({
+      'name': 'pages',
+      'type': 'base',
+      'list_rule': null,
+      'view_rule': null,
+      'fields': [
+        {'name': 'title', 'type': 'text'},
+      ],
     });
   });
 
@@ -296,19 +308,7 @@ void main() {
     }, skip: skip);
   });
 
-  group('server 0.42', () {
-    test('an unknown sort field comes back as a warning', () async {
-      final warnings = <VaultbaseWarning>[];
-      final vb = Vaultbase(server.baseUrl,
-          authStore: MemoryAuthStore()..save(StoredAuth(server.adminToken)),
-          onWarning: warnings.add,
-          printWarnings: PrintWarnings.never);
-      addTearDown(vb.close);
-      await vb.collection('posts').list(sort: '-titel');
-      expect(warnings.map((w) => w.message), contains(contains('titel')));
-      expect(warnings.first.source, WarningSource.http);
-    }, skip: skip);
-
+  group('403 reasons (server 0.42)', () {
     test('a 403 says not_signed_in and the operation', () async {
       final anon = Vaultbase(server.baseUrl);
       addTearDown(anon.close);
@@ -320,18 +320,6 @@ void main() {
               .having((e) => e.serverReason, 'serverReason', 'not_signed_in')));
     }, skip: skip);
 
-    test('a token the server refuses ends the session', () async {
-      final store = MemoryAuthStore()..save(StoredAuth('not.a.token'));
-      final vb = Vaultbase(server.baseUrl, authStore: store);
-      addTearDown(vb.close);
-      await expectLater(
-          vb.collection('notes').create({'body': 'x'}),
-          throwsA(isA<AuthException>()
-              .having((e) => e.reason, 'reason', AuthFailure.expired)
-              .having((e) => e.serverReason, 'serverReason', 'token_invalid')));
-      expect(store.current, isNull);
-    }, skip: skip);
-
     test('registering a taken email is a ConflictException', () async {
       final members = Vaultbase(server.baseUrl).auth.collection('members');
       await members.register('taken@sdk-dart.test', 'longpassword-123');
@@ -339,6 +327,204 @@ void main() {
           members.register('taken@sdk-dart.test', 'longpassword-123'),
           throwsA(
               isA<ConflictException>().having((e) => e.status, 'status', 409)));
+    }, skip: skip);
+  });
+
+  group('a token the server refuses (server 0.44)', () {
+    Matcher expired() => isA<AuthException>()
+        .having((e) => e.reason, 'reason', AuthFailure.expired)
+        .having((e) => e.status, 'status', 401)
+        .having((e) => e.message, 'message', 'Token expired or invalid')
+        .having((e) => e.serverReason, 'serverReason', 'token_invalid');
+
+    test('ends the session, on a write and on a public read', () async {
+      await admin.collection('pages').create({'title': 'Open'});
+      for (final call in <Future<Object?> Function(Vaultbase)>[
+        (vb) => vb.collection('notes').create({'body': 'x'}),
+        (vb) => vb.collection('pages').list(),
+        (vb) => vb.collection('no_such_collection').list(),
+      ]) {
+        final store = MemoryAuthStore()..save(StoredAuth('not.a.token'));
+        final vb = Vaultbase(server.baseUrl, authStore: store);
+        addTearDown(vb.close);
+        await expectLater(call(vb), throwsA(expired()));
+        expect(store.current, isNull);
+        // Signed out, the public read works again.
+        final page = await vb.collection('pages').list();
+        expect(page.items.single.getString('title'), 'Open');
+      }
+    }, skip: skip);
+
+    test('a signed-out session is refused the same way', () async {
+      final vb = Vaultbase(server.baseUrl);
+      addTearDown(vb.close);
+      const email = 'stale@sdk-dart.test';
+      const password = 'a-long-password-1';
+      final members = vb.auth.collection('members');
+      await members.register(email, password);
+      await members.login(email, password);
+      final session = vb.authStore.current!;
+      expect((await vb.collection('pages').list()).items, isNotEmpty);
+      await vb.auth.logout();
+
+      final store = MemoryAuthStore()..save(session);
+      final stale = Vaultbase(server.baseUrl, authStore: store);
+      addTearDown(stale.close);
+      await expectLater(stale.collection('pages').list(), throwsA(expired()));
+      expect(store.current, isNull);
+    }, skip: skip);
+
+    test('batch and files answer the same', () async {
+      for (final call in <Future<Object?> Function(Vaultbase)>[
+        (vb) => (vb.batch()..list('pages')).run(),
+        (vb) => vb.files.token('pages', 'p1', 'cover', 'a.png'),
+        (vb) => vb.files.upload('pages', 'p1', 'cover', [
+              UploadFile.fromBytes('a.txt', [1, 2, 3])
+            ]),
+        (vb) => vb.files.delete('pages', 'p1', 'cover'),
+      ]) {
+        final store = MemoryAuthStore()..save(StoredAuth('not.a.token'));
+        final vb = Vaultbase(server.baseUrl, authStore: store);
+        addTearDown(vb.close);
+        await expectLater(call(vb), throwsA(expired()));
+        expect(store.current, isNull);
+      }
+    }, skip: skip);
+
+    test('an API token without the scope is forbidden, and kept', () async {
+      final minted =
+          await admin.send('/api/v1/admin/api-tokens', method: 'POST', body: {
+        'name': 'sdk-dart read only',
+        'scopes': ['read']
+      }) as Map;
+      final token = minted['token'] as String;
+      expect(token, startsWith('vbat_'));
+      final store = MemoryAuthStore()..save(StoredAuth(token));
+      final vb = Vaultbase(server.baseUrl, authStore: store);
+      addTearDown(vb.close);
+
+      expect((await vb.collection('posts').list(perPage: 1)).page, 1);
+      await expectLater(
+          vb.collection('posts').create({'title': 'x'}),
+          throwsA(isA<AuthException>()
+              .having((e) => e.reason, 'reason', AuthFailure.forbidden)
+              .having((e) => e.status, 'status', 401)
+              .having((e) => e.message, 'message',
+                  "This API token doesn't have the scope for this request")
+              .having((e) => e.serverReason, 'serverReason',
+                  'insufficient_scope')));
+      expect(store.token, token);
+      expect(await vb.auth.refresh(), isFalse);
+      expect(store.token, token);
+      // Still good for what it may do.
+      expect((await vb.collection('posts').list(perPage: 1)).page, 1);
+
+      // Revoked: no longer accepted, and still not cleared.
+      await admin.send('/api/v1/admin/api-tokens/${minted['id']}',
+          method: 'DELETE');
+      await expectLater(
+          vb.collection('posts').list(),
+          throwsA(isA<AuthException>()
+              .having((e) => e.reason, 'reason', AuthFailure.expired)
+              .having((e) => e.message, 'message', 'Token expired or invalid')
+              .having((e) => e.serverReason, 'serverReason', 'token_invalid')));
+      expect(store.token, token);
+    }, skip: skip);
+  });
+
+  group('unknown keys (server 0.44)', () {
+    test('an unknown sort, expand or fields name is a ValidationException',
+        () async {
+      final warnings = <VaultbaseWarning>[];
+      final vb = Vaultbase(server.baseUrl,
+          authStore: MemoryAuthStore()..save(StoredAuth(server.adminToken)),
+          onWarning: warnings.add,
+          printWarnings: PrintWarnings.never);
+      addTearDown(vb.close);
+      final posts = vb.collection('posts');
+      await expectLater(
+          posts.list(sort: '-titel'),
+          throwsA(isA<ValidationException>()
+              .having((e) => e.status, 'status', 400)
+              .having((e) => e.message, 'message', contains('titel'))
+              .having((e) => e.details, 'details',
+                  {'sort': "unknown sort field 'titel'"})));
+      await expectLater(
+          posts.list(expand: 'autor', fields: 'id,titel'),
+          throwsA(isA<ValidationException>().having((e) => e.details.keys,
+              'details', unorderedEquals(['expand', 'fields']))));
+      expect(warnings, isEmpty);
+    }, skip: skip);
+
+    test('the names the SDK and its examples send are accepted', () async {
+      final posts = admin.collection('posts');
+      await posts.list(
+          sort: '-created,updated,id,title',
+          fields: 'id,created,updated,title',
+          expand: 'author',
+          perPage: 1);
+      await posts.iterate(sort: '-created', perPage: 50).take(1).toList();
+    }, skip: skip);
+
+    test('a body key that is not a field is a ValidationException', () async {
+      final posts = admin.collection('posts');
+      await expectLater(
+          posts.create({'title': 'x', 'colour': 'red'}),
+          throwsA(isA<ValidationException>()
+              .having((e) => e.status, 'status', 400)
+              .having((e) => e.details, 'details',
+                  {'colour': "unknown field 'colour' in body"})));
+      final post = await posts.create({'title': 'x'});
+      await expectLater(
+          posts.update(post.id, {'colour': 'red'}),
+          throwsA(isA<ValidationException>()
+              .having((e) => e.details.keys, 'details', ['colour'])));
+      await expectLater(
+          admin.singleton('site').update({'colour': 'red'}),
+          throwsA(isA<ValidationException>()
+              .having((e) => e.details.keys, 'details', ['colour'])));
+    }, skip: skip);
+
+    test('a fetched record can be saved back as it came', () async {
+      final author = await admin.collection('authors').create({'name': 'Bo'});
+      final posts = admin.collection('posts');
+      final post =
+          await posts.create({'title': 'Round trip', 'author': author.id});
+      final read = await posts.get(post.id, expand: 'author');
+      expect(
+          read.data.keys,
+          containsAll([
+            'id',
+            'created',
+            'updated',
+            'collectionId',
+            'collectionName',
+            'expand'
+          ]));
+      final saved =
+          await posts.update(post.id, {...read.toJson(), 'title': 'Saved'});
+      expect(saved.getString('title'), 'Saved');
+
+      final site = admin.singleton('site');
+      final siteNow = await site.get();
+      expect(
+          (await site.update({...siteNow.toJson(), 'title': 'Again'}))
+              .getString('title'),
+          'Again');
+
+      // An auth record carries columns that aren't fields.
+      final members = Vaultbase(server.baseUrl).auth.collection('members');
+      final registered =
+          await members.register('roundtrip@sdk-dart.test', 'longpassword-123');
+      final member = await admin.collection('members').get(registered.id);
+      expect(
+          member.data.keys,
+          containsAll(
+              ['email', 'email_verified', 'totp_enabled', 'is_anonymous']));
+      final renamed = await admin
+          .collection('members')
+          .update(member.id, {...member.toJson(), 'nickname': 'Rt'});
+      expect(renamed.getString('nickname'), 'Rt');
     }, skip: skip);
   });
 }

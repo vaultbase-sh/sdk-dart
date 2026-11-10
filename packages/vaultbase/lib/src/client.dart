@@ -66,9 +66,11 @@ class Vaultbase {
   /// Time limit for each request; none when null.
   final Duration? timeout;
 
-  /// Called with each warning the server sends (server 0.42+): a
-  /// `Vaultbase-Warning` response header (one call per message) or a
-  /// realtime `warning` frame. Called whatever [printWarnings] says.
+  /// Called with each warning the server sends (server 0.42+): a realtime
+  /// `warning` frame, or a `Vaultbase-Warning` response header (one call
+  /// per message; servers 0.42 and 0.43 send it for the unknown sort,
+  /// expand, fields and body keys that 0.44 refuses with a 400). Called
+  /// whatever [printWarnings] says.
   final void Function(VaultbaseWarning warning)? onWarning;
 
   /// When server warnings are printed as `[vaultbase] ...`. By default only
@@ -325,6 +327,9 @@ class Vaultbase {
 
     final message = _message(data);
     final code = data is Map ? data['code'] : null;
+    final serverReason = data is Map && data['reason'] is String
+        ? data['reason'] as String
+        : null;
     switch (status) {
       case 429:
         final secs = double.tryParse(res.headers['retry-after'] ?? '') ?? 1;
@@ -335,9 +340,25 @@ class Vaultbase {
             code: code,
             body: data);
       case 401:
-        if (skipAuth) {
-          throw AuthException(AuthFailure.invalid, message ?? 'Unauthorized',
-              status: status, code: code, body: data);
+        AuthException refused(AuthFailure reason) =>
+            AuthException(reason, message ?? 'Unauthorized',
+                serverReason: serverReason,
+                status: status,
+                code: code,
+                body: data);
+        // The token is good, but it is an API token without the scope for
+        // this request: a refresh would change nothing, and it stays.
+        if (serverReason == 'insufficient_scope') {
+          throw refused(AuthFailure.forbidden);
+        }
+        if (skipAuth) throw refused(AuthFailure.invalid);
+        // An API token is not a session: there is nothing to refresh, and
+        // the app set it, so it stays.
+        final bearer = sentToken != null && sentToken.isNotEmpty
+            ? sentToken
+            : _bearer(hdrs);
+        if (bearer != null && isApiToken(bearer)) {
+          throw refused(AuthFailure.expired);
         }
         if (!retried && !path.endsWith('/api/v1/auth/refresh')) {
           if (await refreshSession()) {
@@ -357,21 +378,14 @@ class Vaultbase {
         }
         // Refused with a token that was just refreshed: the session is fine,
         // this endpoint refuses the caller. Keep it.
-        if (retried) {
-          throw AuthException(AuthFailure.forbidden, message ?? 'Unauthorized',
-              status: status, code: code, body: data);
-        }
+        if (retried) throw refused(AuthFailure.forbidden);
         // Signed out or in again while this ran: leave that session alone.
         if (authStore.token == sentToken) authStore.clear();
-        throw AuthException(AuthFailure.expired, message ?? 'Unauthorized',
-            status: status, code: code, body: data);
+        throw refused(AuthFailure.expired);
       case 403:
         final op = data is Map ? data['operation'] : null;
         final operation =
             op is String ? AuthOperation.values.asNameMap()[op] : null;
-        final serverReason = data is Map && data['reason'] is String
-            ? data['reason'] as String
-            : null;
         AuthException refused(AuthFailure reason) =>
             AuthException(reason, message ?? 'Forbidden',
                 operation: operation,
@@ -379,12 +393,15 @@ class Vaultbase {
                 status: status,
                 code: code,
                 body: data);
-        // The server didn't accept the token and ran the request as
-        // anonymous: the session is over unless a refresh saves it.
+        // Servers 0.42 and 0.43 (0.44 answers 401): the server didn't accept
+        // the token and ran the request as anonymous. The session is over
+        // unless a refresh saves it.
         if (serverReason == 'token_invalid' &&
             !skipAuth &&
             sentToken != null &&
             sentToken.isNotEmpty) {
+          // An API token is never refreshed or cleared, as on a 401.
+          if (isApiToken(sentToken)) throw refused(AuthFailure.expired);
           // Refused again with a token that was just refreshed: like a 401
           // then, this endpoint refuses the caller. Keep the session.
           if (retried) throw refused(AuthFailure.forbidden);
@@ -467,13 +484,15 @@ class Vaultbase {
 
   /// Refreshes the session once, however many callers ask at the same time.
   /// True when a new token was stored. A refused refresh clears the session;
-  /// a network error throws and keeps it.
+  /// a network error throws and keeps it. An API token is not a session:
+  /// false, and it stays.
   Future<bool> refreshSession() =>
       _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
 
   Future<bool> _refresh() async {
     final previous = authStore.current;
     if (previous == null || previous.token.isEmpty) return false;
+    if (isApiToken(previous.token)) return false;
     final Object? data;
     try {
       data = await request('/api/v1/auth/refresh',
@@ -497,7 +516,7 @@ class Vaultbase {
 
   Future<void> _maybeRefresh() async {
     final token = authStore.token;
-    if (token == null || token.isEmpty) return;
+    if (token == null || token.isEmpty || isApiToken(token)) return;
     final left = secondsUntilExpiry(token);
     if (left == null || left > _refreshLeadSeconds) return;
     final bool ok;
@@ -517,6 +536,18 @@ class Vaultbase {
     if (now == token) authStore.clear();
     throw const AuthException(
         AuthFailure.expired, 'Session expired; sign in again');
+  }
+
+  /// The Bearer token among [headers]: one the app set with the client's
+  /// `headers` instead of the auth store.
+  static String? _bearer(Map<String, String> headers) {
+    for (final e in headers.entries) {
+      if (e.key.toLowerCase() == 'authorization' &&
+          e.value.startsWith('Bearer ')) {
+        return e.value.substring(7);
+      }
+    }
+    return null;
   }
 
   static final _recordPath = RegExp(r'^/api/(?:v\d+/)?([^/]+)/([^/]+)$');

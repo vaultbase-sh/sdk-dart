@@ -1,6 +1,6 @@
 /// Where a server warning came from.
 enum WarningSource {
-  /// A `Vaultbase-Warning` response header.
+  /// A `Vaultbase-Warning` response header (servers 0.42 and 0.43).
   http,
 
   /// A realtime `warning` frame.
@@ -21,9 +21,10 @@ enum PrintWarnings {
 }
 
 /// A warning the server sent (server 0.42+): a request that works but
-/// probably doesn't do what was meant, such as a sort field or expand that
-/// doesn't exist, or a realtime subscription to a collection that doesn't
-/// exist.
+/// probably doesn't do what was meant, such as a realtime subscription to a
+/// collection that doesn't exist. Servers 0.42 and 0.43 also warn about a
+/// sort field, expand, `fields` name or body key that doesn't exist; from
+/// 0.44 those requests throw a `ValidationException` instead.
 class VaultbaseWarning {
   const VaultbaseWarning(this.source, this.message,
       {this.method, this.path, this.reason, this.topic});
