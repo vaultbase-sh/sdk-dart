@@ -28,6 +28,12 @@ The integration tests start a real server from a checkout of
 [vaultbase-sh/vaultbase](https://github.com/vaultbase-sh/vaultbase) next to this repo
 (`../vaultbase`), or from `VAULTBASE_SERVER_DIR`. Without one they skip.
 
+Git hooks in `.githooks/` run the CI checks before a push (format, analyze, tests) and refuse AI attribution in commit messages. Turn them on once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 ## License
 
 MIT

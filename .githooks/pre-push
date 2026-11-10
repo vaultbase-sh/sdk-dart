@@ -1,0 +1,12 @@
+#!/bin/sh
+# The same checks as CI: format, analyze, tests (the integration tests start
+# the server from the sibling ../vaultbase checkout).
+# Skip once with git push --no-verify.
+set -e
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+echo "pre-push: dart format"; dart format --output=none --set-exit-if-changed .
+echo "pre-push: flutter analyze"; flutter analyze
+echo "pre-push: dart test (vaultbase)"; (cd packages/vaultbase && dart test)
+echo "pre-push: flutter test (vaultbase_flutter)"; (cd packages/vaultbase_flutter && flutter test)
+echo "pre-push: flutter test (example)"; (cd example && flutter test)
