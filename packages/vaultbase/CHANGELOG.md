@@ -1,3 +1,21 @@
+## 0.7.2
+
+For server 0.46, which keeps an `id` sent on a create and reads an
+idempotency key. No breaking change.
+
+- `collection.create(body, idempotencyKey: key)` sends the key as
+  `X-VB-Idempotency-Key`. The same key again, from the same caller on the
+  same collection, returns the record the first request made, so a create
+  can be repeated after a timeout or a dropped connection without making a
+  second record. The same key with a different body throws
+  `ValidationException`; while the first request is still running,
+  `ConflictException`. The server keeps a key for 24 hours. A server before
+  0.46 ignores it.
+- A UUID sent as `id` in a create's body is kept by server 0.46 (older
+  servers replaced it). A taken id throws `ConflictException`; an `id` that
+  isn't a UUID throws `ValidationException` with `details['id']`. Nothing
+  changed in the package for this; the tests now cover it.
+
 ## 0.7.1
 
 For server 0.44, which answers 401 for a token it doesn't accept and 400

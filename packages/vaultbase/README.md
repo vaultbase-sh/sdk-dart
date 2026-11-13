@@ -72,6 +72,22 @@ Two things a server from 0.44 refuses that older ones let through:
   back as it was read (`update(id, {...record.toJson(), 'title': 'New'})`).
   The client adds no keys of its own.
 
+## Server 0.46
+
+- **Your own id.** A UUID sent as `id` in a create's body is kept. A taken
+  id throws `ConflictException`. A client that builds a new record from a
+  fetched one must leave `id` out.
+- **Creates that are safe to repeat.** Pass an idempotency key, made once
+  per record and kept until the create succeeds:
+
+  ```dart
+  final post = await vb.collection('posts')
+      .create({'title': 'Hello'}, idempotencyKey: key);
+  ```
+
+  The same call again with the same key returns the same record. A server
+  before 0.46 ignores the key.
+
 ## API tokens
 
 For a script or a server, an API token (`vbat_...`) goes in the auth store:
