@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+// Flutter 3.50 deprecates this import in favour of package:material_ui.
+// The example keeps it so it still runs on Flutter 3.27, like the packages.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:vaultbase_flutter/vaultbase_flutter.dart';
 
