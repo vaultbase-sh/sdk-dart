@@ -98,6 +98,33 @@ void main() {
               isA<NotFoundException>().having((e) => e.status, 'status', 404)));
     }, skip: skip);
 
+    test('a create keeps its own id; a taken one is a ConflictException',
+        () async {
+      final posts = admin.collection('posts');
+      const id = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
+      final created = await posts.create({'id': id, 'title': 'Mine'});
+      expect(created.id, id);
+      await expectLater(posts.create({'id': id, 'title': 'Again'}),
+          throwsA(isA<ConflictException>()));
+      await expectLater(
+          posts.create({'id': 'not-a-uuid', 'title': 'Bad'}),
+          throwsA(isA<ValidationException>()
+              .having((e) => e.details.keys, 'fields', contains('id'))));
+    }, skip: skip);
+
+    test('an idempotency key makes a repeated create return the first record',
+        () async {
+      final posts = admin.collection('posts');
+      const key = 'dart-idem-1';
+      final first = await posts.create({'title': 'Once'}, idempotencyKey: key);
+      final again = await posts.create({'title': 'Once'}, idempotencyKey: key);
+      expect(again.id, first.id);
+      final found = await posts.list(filter: 'title = "Once"');
+      expect(found.items, hasLength(1));
+      await expectLater(posts.create({'title': 'Other'}, idempotencyKey: key),
+          throwsA(isA<ValidationException>()));
+    }, skip: skip);
+
     test('validation errors carry field details', () async {
       await expectLater(
           admin.collection('posts').create({'views': 1}),

@@ -401,6 +401,18 @@ void main() {
   });
 
   group('records', () {
+    test('create sends the idempotency key only when given', () async {
+      final c = client((_) => json({
+            'data': {'id': 'r1'}
+          }));
+      final posts = c.vb.collection('posts');
+      await posts.create({'title': 'a'});
+      await posts.create({'title': 'a'}, idempotencyKey: 'k-1');
+      expect(c.requests[0].headers.containsKey('X-VB-Idempotency-Key'), false);
+      expect(c.requests[1].headers['X-VB-Idempotency-Key'], 'k-1');
+      expect(c.requests[1].method, 'POST');
+    });
+
     test('list sends its options; skipTotal as 1', () async {
       final c = client((_) => json({
             'data': <Object?>[],

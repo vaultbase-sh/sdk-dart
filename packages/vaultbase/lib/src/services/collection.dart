@@ -3,6 +3,9 @@ import '../client.dart';
 import '../models.dart';
 import '../realtime.dart';
 
+/// The header a create's idempotency key goes in.
+const _idempotencyHeader = 'X-VB-Idempotency-Key';
+
 /// Records of one collection.
 class Collection<T> {
   Collection(this._vb, this.name, this._decode);
@@ -113,10 +116,25 @@ class Collection<T> {
     return _decode((data as Map).cast<String, dynamic>());
   }
 
+  /// Creates a record. The server makes the `id`, or keeps a UUID sent as
+  /// `id` in [body] (server 0.46); a taken id throws `ConflictException`.
+  ///
+  /// With an [idempotencyKey] the create is safe to repeat after a timeout
+  /// or a dropped connection: the same key again returns the record the
+  /// first request made, and no second record is made. Make the key once
+  /// per record (a UUID does) and keep it until the create succeeds. The
+  /// server keeps a key for 24 hours, per collection and caller; the same
+  /// key with a different [body] throws `ValidationException`. A server
+  /// before 0.46 ignores the key.
   Future<T> create(Map<String, dynamic> body,
-      {CancelToken? cancelToken}) async {
+      {String? idempotencyKey, CancelToken? cancelToken}) async {
     final data = await _vb.request(_path,
-        method: 'POST', body: body, cancelToken: cancelToken);
+        method: 'POST',
+        body: body,
+        headers: idempotencyKey == null
+            ? null
+            : {_idempotencyHeader: idempotencyKey},
+        cancelToken: cancelToken);
     return _decode((data as Map).cast<String, dynamic>());
   }
 
